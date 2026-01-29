@@ -1268,13 +1268,15 @@
             .message { gap: 10px; }
             .message-avatar { width: 32px; height: 32px; }
             .input-area { padding: 10px 12px; padding-bottom: calc(10px + var(--safe-area-bottom)); }
-            .suggestions { grid-template-columns: 1fr; }
+            .suggestions { grid-template-columns: 1fr; gap: 10px; }
             .side-panel { max-width: 100%; }
             .scroll-bottom-btn { bottom: 120px; right: 12px; }
             .file-explorer { width: 100%; left: -100%; }
             .file-preview-content { min-width: 90vw; }
-            .welcome-title { font-size: clamp(24px, 7vw, 36px); }
-            .welcome-subtitle { font-size: 14px; }
+            .welcome-screen { padding: 20px 16px; }
+            .welcome-logo { width: 70px; height: 70px; margin-bottom: 20px; }
+            .welcome-title { font-size: 32px !important; display: block !important; }
+            .welcome-subtitle { font-size: 15px; margin-bottom: 24px; display: block !important; }
             .suggestion { padding: 12px 14px; }
             .suggestion-icon { font-size: 18px; }
         }
@@ -1292,8 +1294,15 @@
             .send-btn { width: 36px; height: 36px; }
             .attach-btn { width: 32px; height: 32px; }
             .welcome-logo { width: 60px; height: 60px; }
+            .welcome-title { font-size: 28px !important; display: block !important; }
+            .welcome-subtitle { font-size: 14px; display: block !important; }
+            .welcome-screen { padding: 16px; }
             .panel-content { padding: 12px; }
             .setting-item { padding: 10px 0; }
+            .suggestions { gap: 8px; }
+            .suggestion { padding: 10px 12px; }
+            .suggestion-icon { font-size: 16px; margin-bottom: 4px; }
+            .suggestion-text { font-size: 12px; }
         }
     </style>
 </head>
