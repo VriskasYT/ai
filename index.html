@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Chat</title>
+    <title>AI Studio</title>
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Google+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+    <script async src="https://telegram.org/js/telegram-widget.js?22"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
@@ -393,7 +396,61 @@
             -webkit-overflow-scrolling: touch;
         }
 
-        .welcome-screen.hidden { display: none; }
+        .welcome-screen {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .welcome-screen.hiding {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+
+        .welcome-screen.hidden { 
+            display: none;
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0; transform: scale(0.95); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .messages-wrapper {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .messages-wrapper.showing {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        /* Smooth icon transitions */
+        .icon-btn svg {
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+
+        .icon-btn:active svg {
+            transform: scale(0.9);
+        }
+
+        /* Settings button rotation animation */
+        .icon-btn.settings-rotating svg {
+            animation: settingsRotate 0.5s ease-out;
+        }
+
+        @keyframes settingsRotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(180deg); }
+        }
 
         .welcome-logo { width: 80px; height: 80px; margin-bottom: 24px; animation: welcomePulse 3s ease-in-out infinite; flex-shrink: 0; }
 
@@ -577,14 +634,6 @@
             border-radius: 0;
         }
 
-        .file-op-code .keyword { color: #569cd6; }
-        .file-op-code .string { color: #ce9178; }
-        .file-op-code .comment { color: #6a9955; }
-        .file-op-code .function { color: #dcdcaa; }
-        .file-op-code .number { color: #b5cea8; }
-        .file-op-code .tag { color: #569cd6; }
-        .file-op-code .attr { color: #9cdcfe; }
-
         .file-op-status {
             padding: 10px 16px;
             font-size: 13px;
@@ -596,22 +645,74 @@
             font-weight: 500;
         }
 
-        .file-op-actions {
-            display: flex;
-            gap: 8px;
-            padding: 8px 16px;
-            background: #2d2d2d;
-            border-bottom: 1px solid #404040;
-            justify-content: space-between;
-            align-items: center;
+        .file-op-pending {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border-color: #ff9800;
+        }
+        .dark-theme .file-op-pending { background: linear-gradient(135deg, #4a3000 0%, #5a3800 100%); }
+
+        .file-op-pending .file-op-header { color: #e65100; }
+        .dark-theme .file-op-pending .file-op-header { color: #ffb74d; }
+
+        .file-op-pending .file-op-status {
+            color: #e65100;
+            background: rgba(230, 81, 0, 0.1);
         }
 
-        .file-op-lang {
-            color: #888;
-            font-size: 12px;
-            font-weight: 500;
-            text-transform: uppercase;
+        .file-op-indicator {
+            font-family: 'Google Sans Mono', monospace;
+            font-weight: 600;
+            color: #e65100;
         }
+
+        @keyframes opPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .file-op-pending .file-op-indicator {
+            animation: opPulse 1s ease-in-out infinite;
+        }
+
+        .file-op-progress {
+            width: 100%;
+            height: 4px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .file-op-progress-bar {
+            height: 100%;
+            width: 30%;
+            background: linear-gradient(90deg, #ff9800, #ff5722, #ff9800);
+            background-size: 200% 100%;
+            border-radius: 2px;
+            animation: progressAnim 1.5s ease-in-out infinite;
+        }
+
+        @keyframes progressAnim {
+            0% { width: 20%; margin-left: 0; background-position: 0% 0%; }
+            50% { width: 50%; margin-left: 25%; background-position: 100% 0%; }
+            100% { width: 20%; margin-left: 80%; background-position: 0% 0%; }
+        }
+
+        .file-op-stopped {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border-color: #ff9800;
+        }
+        .dark-theme .file-op-stopped { background: linear-gradient(135deg, #4a3000 0%, #5a3800 100%); }
+        .file-op-stopped .file-op-header { color: #e65100; }
+        .file-op-stopped .file-op-status { color: #e65100; background: rgba(230, 81, 0, 0.1); }
+
+        .file-op-failed {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            border-color: #f44336;
+        }
+        .dark-theme .file-op-failed { background: linear-gradient(135deg, #4a0000 0%, #5a1010 100%); }
+        .file-op-failed .file-op-header { color: #c62828; }
+        .file-op-failed .file-op-status { color: #c62828; background: rgba(198, 40, 40, 0.1); }
 
         /* Thinking Block */
         .thinking-block {
@@ -804,7 +905,6 @@
         .action-btn:hover, .action-btn:active { background: var(--border-color); color: var(--text-primary); }
 
         .generated-image { max-width: 100%; max-height: 400px; border-radius: var(--radius-md); margin: 12px 0; box-shadow: var(--shadow-md); cursor: pointer; }
-        .generated-video { max-width: 100%; border-radius: var(--radius-md); margin: 12px 0; box-shadow: var(--shadow-md); }
 
         .typing-indicator { display: flex; gap: 4px; padding: 8px 0; }
 
@@ -975,6 +1075,50 @@
 
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
+        /* Particle effect on send */
+        .particle {
+            position: fixed;
+            pointer-events: none;
+            font-size: 16px;
+            z-index: 1000;
+            animation: particleFly 1s ease-out forwards;
+        }
+
+        @keyframes particleFly {
+            0% { opacity: 1; transform: translate(0, 0) scale(1); }
+            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0); }
+        }
+
+        /* Typing cursor animation */
+        .typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background: var(--accent);
+            margin-left: 2px;
+            animation: cursorBlink 1s infinite;
+        }
+
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        /* Smooth message appearance */
+        .message {
+            animation: messageFade 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Model badge shine effect */
+        .badge.new {
+            animation: badgeShine 2s ease-in-out infinite;
+        }
+
+        @keyframes badgeShine {
+            0%, 100% { box-shadow: 0 0 0 rgba(197, 34, 31, 0); }
+            50% { box-shadow: 0 0 8px rgba(197, 34, 31, 0.5); }
+        }
+
         .scroll-bottom-btn {
             position: fixed;
             bottom: 140px;
@@ -996,6 +1140,138 @@
         .scroll-bottom-btn.show { display: flex; }
         .scroll-bottom-btn svg { width: 20px; height: 20px; }
 
+        /* File Explorer Panel */
+        .file-explorer {
+            position: fixed;
+            top: 0;
+            left: -320px;
+            width: 320px;
+            height: 100%;
+            background: var(--bg-primary);
+            border-right: 1px solid var(--border-color);
+            z-index: 600;
+            transition: left 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .file-explorer.open { left: 0; }
+
+        .file-explorer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            min-height: 56px;
+        }
+
+        .file-explorer-title {
+            font-size: 16px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-explorer-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .file-explorer-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .file-tree-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: background 0.15s;
+            font-size: 13px;
+        }
+
+        .file-tree-item:hover { background: var(--bg-tertiary); }
+        .file-tree-item.selected { background: var(--accent-light); }
+
+        .file-tree-icon { font-size: 16px; flex-shrink: 0; }
+        .file-tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-tree-size { font-size: 11px; color: var(--text-tertiary); }
+
+        .file-tree-folder { padding-left: 8px; }
+        .file-tree-folder.collapsed > .file-tree-children { display: none; }
+        .file-tree-children { padding-left: 16px; }
+
+        .file-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-tertiary);
+        }
+
+        .file-preview-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .file-preview-modal.show { display: flex; }
+
+        .file-preview-content {
+            background: var(--bg-primary);
+            border-radius: var(--radius-md);
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-width: 400px;
+        }
+
+        .file-preview-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .file-preview-title {
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-preview-body {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Google Sans Mono', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            max-height: 70vh;
+        }
+
+        .file-preview-actions {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            justify-content: flex-end;
+        }
+
         @media (max-width: 768px) {
             .header { padding: 8px 12px; }
             .logo span { display: none; }
@@ -1012,6 +1288,47 @@
 </head>
 <body>
     <div class="overlay" id="overlay" onclick="closeAllPanels()"></div>
+
+    <!-- File Explorer -->
+    <div class="file-explorer" id="fileExplorer">
+        <div class="file-explorer-header">
+            <span class="file-explorer-title">📁 Проводник</span>
+            <div class="file-explorer-actions">
+                <button class="icon-btn" onclick="createNewFile()" title="Новый файл">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 14h-3v3h-2v-3H8v-2h3v-3h2v3h3v2zm-3-7V3.5L18.5 9H13z"/></svg>
+                </button>
+                <button class="icon-btn" onclick="createNewFolder()" title="Новая папка">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                </button>
+                <button class="icon-btn" onclick="toggleFileExplorer()">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="file-explorer-content" id="fileExplorerContent">
+            <div class="file-empty">
+                <p>📂 Файлы появятся здесь</p>
+                <p style="font-size:12px;margin-top:8px;">Попросите AI создать файл</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Preview Modal -->
+    <div class="file-preview-modal" id="filePreviewModal" onclick="closeFilePreview(event)">
+        <div class="file-preview-content" onclick="event.stopPropagation()">
+            <div class="file-preview-header">
+                <span class="file-preview-title" id="filePreviewTitle">📄 file.txt</span>
+                <button class="icon-btn" onclick="closeFilePreview()">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                </button>
+            </div>
+            <div class="file-preview-body" id="filePreviewBody"></div>
+            <div class="file-preview-actions">
+                <button class="action-btn" onclick="copyFileContent()">📋 Копировать</button>
+                <button class="action-btn" onclick="downloadCurrentFile()">💾 Скачать</button>
+            </div>
+        </div>
+    </div>
 
     <div class="side-panel" id="settingsPanel">
         <div class="panel-header">
@@ -1079,6 +1396,26 @@
                 <textarea class="system-prompt-input" id="systemPrompt" placeholder="Опишите поведение ассистента..."></textarea>
             </div>
 
+            <div class="settings-section" id="authSection">
+                <div class="settings-section-title">👤 Аккаунт</div>
+                <div id="authNotLoggedIn">
+                    <div style="background:var(--accent-light);padding:16px;border-radius:var(--radius-md);margin-bottom:12px;">
+                        <p style="font-size:14px;color:var(--text-primary);margin-bottom:8px;">🔐 <strong>Войдите в аккаунт</strong></p>
+                        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">Зарегистрируйтесь или войдите чтобы сохранить ваши чаты в облаке. Все ваши локальные чаты будут скопированы на аккаунт.</p>
+                        <div id="telegramLoginWidget"></div>
+                    </div>
+                </div>
+                <div id="authLoggedIn" style="display:none;">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-name" id="authUserName">Пользователь</div>
+                            <div class="setting-desc" id="authUserInfo">Синхронизация включена ☁️</div>
+                        </div>
+                        <button class="action-btn" onclick="logoutUser()" style="background:#fce8e6;color:#c5221f;">Выйти</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="settings-section">
                 <div class="settings-section-title">💾 Данные</div>
                 <div class="setting-item">
@@ -1107,12 +1444,15 @@
 
     <header class="header">
         <div class="header-left">
-            <button class="icon-btn" onclick="toggleHistory()">
+            <button class="icon-btn" onclick="toggleHistory()" title="История">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+            </button>
+            <button class="icon-btn" onclick="toggleFileExplorer()" title="Проводник">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
             </button>
             <a class="logo" onclick="newChat()">
                 <div class="logo-icon" id="headerLogo"></div>
-                <span>AI Chat</span>
+                <span>Gemini</span>
             </a>
         </div>
 
@@ -1149,21 +1489,29 @@
             <p class="welcome-subtitle">Чем могу помочь сегодня?</p>
             
             <div class="suggestions">
-                <div class="suggestion" onclick="useSuggestion('Объясни квантовые вычисления простыми словами')">
-                    <div class="suggestion-icon">🧠</div>
-                    <div class="suggestion-text">Объясни квантовые вычисления</div>
+                <div class="suggestion" onclick="useSuggestion('Создай игру змейку на HTML/CSS/JavaScript')">
+                    <div class="suggestion-icon">🐍</div>
+                    <div class="suggestion-text">Создай игру змейку</div>
                 </div>
-                <div class="suggestion" onclick="useSuggestion('Напиши код сортировки пузырьком на Python')">
-                    <div class="suggestion-icon">💻</div>
-                    <div class="suggestion-text">Напиши код сортировки на Python</div>
+                <div class="suggestion" onclick="useSuggestion('Создай красивое TODO приложение с анимациями')">
+                    <div class="suggestion-icon">✅</div>
+                    <div class="suggestion-text">TODO приложение</div>
                 </div>
-                <div class="suggestion" onclick="useSuggestion('Сгенерируй изображение: футуристический город')">
+                <div class="suggestion" onclick="useSuggestion('Сгенерируй изображение: футуристический город на закате')">
                     <div class="suggestion-icon">🎨</div>
-                    <div class="suggestion-text">Сгенерируй изображение города</div>
+                    <div class="suggestion-text">Нарисуй город будущего</div>
                 </div>
-                <div class="suggestion" onclick="useSuggestion('Составь план изучения машинного обучения')">
-                    <div class="suggestion-icon">📚</div>
-                    <div class="suggestion-text">План изучения ML</div>
+                <div class="suggestion" onclick="useSuggestion('Создай калькулятор с красивым дизайном')">
+                    <div class="suggestion-icon">🧮</div>
+                    <div class="suggestion-text">Создай калькулятор</div>
+                </div>
+                <div class="suggestion" onclick="useSuggestion('Напиши интересную короткую историю про космос')">
+                    <div class="suggestion-icon">🚀</div>
+                    <div class="suggestion-text">Расскажи историю про космос</div>
+                </div>
+                <div class="suggestion" onclick="useSuggestion('Создай веб-страницу портфолио с современным дизайном')">
+                    <div class="suggestion-icon">💼</div>
+                    <div class="suggestion-text">Сделай портфолио сайт</div>
                 </div>
             </div>
         </div>
@@ -1212,6 +1560,20 @@
     <div class="toast" id="toast"></div>
 
     <script>
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyAQe5UUx7HkkF98Lo-j0KCufdPmQzzZySs",
+            authDomain: "tanchiki-45b4e.firebaseapp.com",
+            databaseURL: "https://tanchiki-45b4e-default-rtdb.firebaseio.com",
+            projectId: "tanchiki-45b4e",
+            storageBucket: "tanchiki-45b4e.firebasestorage.app",
+            messagingSenderId: "152159817482",
+            appId: "1:152159817482:web:a90141233e398ed633f4f3"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
         const API_KEY = 'sk_MIrJoVngM6GGtVhfAbmYFlRvOAHCllqc';
         const API_BASE = 'https://gen.pollinations.ai';
 
@@ -1221,40 +1583,34 @@
             google: `<svg viewBox="0 0 24 24" width="100%" height="100%"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`,
             openai: `<svg viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M22.28 9.77c.55-1.48.37-3.15-.5-4.53a5.14 5.14 0 0 0-5.55-2.42A5.2 5.2 0 0 0 12.34 1a5.18 5.18 0 0 0-4.95 3.63 5.14 5.14 0 0 0-3.44 2.5 5.2 5.2 0 0 0 .64 6.1A5.2 5.2 0 0 0 5.1 17.8a5.14 5.14 0 0 0 5.54 2.42 5.17 5.17 0 0 0 3.89 1.75 5.18 5.18 0 0 0 4.95-3.64 5.14 5.14 0 0 0 3.44-2.5 5.2 5.2 0 0 0-.64-6.1zM13.53 21.1a3.89 3.89 0 0 1-2.5-.9l.12-.07 4.15-2.4c.21-.12.34-.35.34-.6v-5.85l1.75 1.01c.02.01.03.03.04.05v4.85a3.92 3.92 0 0 1-3.9 3.91zm-8.4-3.59a3.87 3.87 0 0 1-.46-2.62l.12.07 4.15 2.4c.21.12.47.12.68 0l5.07-2.93v2.03c0 .02-.01.05-.03.06l-4.2 2.42a3.92 3.92 0 0 1-5.33-1.43zM3.64 8.65a3.87 3.87 0 0 1 2.04-1.72v4.94c0 .25.13.48.34.6l5.07 2.93-1.75 1.01a.08.08 0 0 1-.07.01l-4.2-2.42a3.92 3.92 0 0 1-1.43-5.35zm14.42 3.36-5.07-2.93 1.75-1.01c.02-.01.05-.02.07-.01l4.2 2.42a3.91 3.91 0 0 1-.6 7.05v-4.93a.7.7 0 0 0-.35-.59zm1.74-2.64-.12-.07-4.15-2.4a.68.68 0 0 0-.68 0l-5.07 2.93V7.8c0-.02.01-.05.03-.06l4.2-2.42a3.91 3.91 0 0 1 5.79 4.05zM9.67 12.87l-1.75-1.01a.08.08 0 0 1-.04-.05V6.96a3.91 3.91 0 0 1 6.41-3.02l-.12.07-4.15 2.4c-.21.12-.34.35-.34.6v5.86zm.95-2.06L12 10l1.38.8v1.6L12 13.2l-1.38-.8v-1.59z"/></svg>`,
             anthropic: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#CC785C"/><path fill="white" d="M15.5 5.5h-2.2l-1.4 4.3L10.5 5.5H8.3l2.5 7.2-2.7 7.8h2.2l1.6-4.8 1.6 4.8h2.2l-2.7-7.8 2.5-7.2z"/></svg>`,
-            xai: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#000"/><path fill="white" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
             deepseek: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#4D6BFE"/><path fill="white" d="M6 8c0-1.1.9-2 2-2h8c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2H8c-1.1 0-2-.9-2-2V8zm3 1v6h2v-2h2v2h2V9h-2v2h-2V9H9z"/></svg>`,
             mistral: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#F54E42"/><rect x="4" y="4" width="4" height="4" fill="#F2D117"/><rect x="10" y="4" width="4" height="4" fill="white"/><rect x="16" y="4" width="4" height="4" fill="#F2D117"/><rect x="4" y="10" width="4" height="4" fill="white"/><rect x="10" y="10" width="4" height="4" fill="white"/><rect x="16" y="10" width="4" height="4" fill="white"/><rect x="4" y="16" width="4" height="4" fill="#F2D117"/><rect x="10" y="16" width="4" height="4" fill="white"/><rect x="16" y="16" width="4" height="4" fill="#F2D117"/></svg>`,
             perplexity: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#1B1B1B"/><path fill="#20BBAD" d="M12 3l9 6v6l-9 6-9-6V9l9-6zm0 2.5L5.5 9.5v5l6.5 4 6.5-4v-5L12 5.5z"/><circle cx="12" cy="12" r="3" fill="#20BBAD"/></svg>`,
-            amazon: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#232F3E"/><path fill="#FF9900" d="M6.5 14.5c2.5 2 6.5 3 9.5 1.5M17.5 17l-1.5-1 1-1"/><path fill="#FF9900" d="M12 6c-3 0-5.5 2-6 5 0 0 1.5-2 4-2s4 1.5 4 3.5c0 1.5-1 2.5-2 2.5s-2-1-2-2c0-.5.5-1 1-1"/></svg>`,
             qwen: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#615EFF"/><circle cx="12" cy="12" r="7" fill="none" stroke="white" stroke-width="2"/><path fill="white" d="M12 7v5l3 3"/><circle cx="12" cy="12" r="2" fill="white"/></svg>`,
             kimi: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#000"/><path fill="#4ECDC4" d="M12 4c4.4 0 8 3.6 8 8s-3.6 8-8 8-8-3.6-8-8 3.6-8 8-8zm0 2c-3.3 0-6 2.7-6 6s2.7 6 6 6c1.4 0 2.8-.5 3.8-1.4-.6.2-1.2.4-1.8.4-3.3 0-6-2.7-6-6 0-1.4.5-2.8 1.4-3.8-.2.6-.4 1.2-.4 1.8 0 2.2 1.8 4 4 4s4-1.8 4-4c0-.6-.2-1.2-.4-1.8.9 1 1.4 2.4 1.4 3.8 0 3.3-2.7 6-6 6z"/></svg>`,
             glm: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#1A73E8"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="9" font-weight="bold" font-family="Arial">GLM</text></svg>`,
             minimax: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#5046E4"/><path fill="white" d="M6 8h3v8H6V8zm4.5 0H14l1.5 4V8h3v8h-3l-2-5.5V16h-3V8z"/></svg>`,
-            chickytutor: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#FFD54F"/><ellipse cx="12" cy="14" rx="6" ry="5" fill="#FFECB3"/><circle cx="9" cy="12" r="1.5" fill="#333"/><circle cx="15" cy="12" r="1.5" fill="#333"/><path fill="#FF9800" d="M12 14l-2 3h4l-2-3z"/><path fill="#FF9800" d="M8 8c0 0 2-3 4-3s4 3 4 3" stroke="#FF9800" stroke-width="2" fill="none"/></svg>`,
-            midijourney: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#9C27B0"/><ellipse cx="9" cy="15" rx="3" ry="4" fill="white"/><ellipse cx="15" cy="13" rx="3" ry="4" fill="white"/><rect x="11" y="5" width="2" height="10" fill="white"/><rect x="17" y="5" width="2" height="8" fill="white"/></svg>`,
-            nomnom: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#E91E63"/><circle cx="8" cy="10" r="2" fill="white"/><circle cx="16" cy="10" r="2" fill="white"/><path fill="white" d="M7 14c0 0 2.5 4 5 4s5-4 5-4H7z"/><circle cx="8" cy="10" r="1" fill="#333"/><circle cx="16" cy="10" r="1" fill="#333"/></svg>`,
-            flux: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="fluxGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#667eea"/><stop offset="50%" style="stop-color:#764ba2"/><stop offset="100%" style="stop-color:#f093fb"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#fluxGrad)"/><path fill="white" d="M7 7h4v4H7V7zm6 0h4v4h-4V7zm-6 6h4v4H7v-4zm6 0h4v4h-4v-4z" opacity="0.9"/></svg>`,
-            sdxl: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#2D3748"/><text x="12" y="15" text-anchor="middle" fill="white" font-size="7" font-weight="bold">SDXL</text></svg>`,
+            xai: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#000"/><path fill="white" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
+            amazon: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#232F3E"/><path fill="#FF9900" d="M6.5 14.5c2.5 2 6.5 3 9.5 1.5M17.5 17l-1.5-1 1-1"/><path fill="#FF9900" d="M12 6c-3 0-5.5 2-6 5 0 0 1.5-2 4-2s4 1.5 4 3.5c0 1.5-1 2.5-2 2.5s-2-1-2-2c0-.5.5-1 1-1"/></svg>`,
+            chickytutor: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#FFD54F"/><ellipse cx="12" cy="14" rx="6" ry="5" fill="#FFECB3"/><circle cx="9" cy="12" r="1.5" fill="#333"/><circle cx="15" cy="12" r="1.5" fill="#333"/><path fill="#FF9800" d="M12 14l-2 3h4l-2-3z"/></svg>`,
+            midijourney: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="midiGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#9C27B0"/><stop offset="100%" style="stop-color:#E91E63"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#midiGrad)"/><rect x="4" y="8" width="3" height="12" rx="1" fill="white"/><rect x="8" y="8" width="3" height="12" rx="1" fill="white"/><rect x="13" y="8" width="3" height="12" rx="1" fill="white"/><rect x="17" y="8" width="3" height="12" rx="1" fill="white"/><rect x="5.5" y="8" width="2" height="7" rx="0.5" fill="#333"/><rect x="10" y="8" width="2" height="7" rx="0.5" fill="#333"/><rect x="15" y="8" width="2" height="7" rx="0.5" fill="#333"/><path d="M4 6c0-1.1.9-2 2-2h12a2 2 0 012 2v2H4V6z" fill="rgba(255,255,255,0.3)"/></svg>`,
+            nomnom: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#E91E63"/><circle cx="8" cy="10" r="2" fill="white"/><circle cx="16" cy="10" r="2" fill="white"/><path fill="white" d="M7 14c0 0 2.5 4 5 4s5-4 5-4H7z"/></svg>`,
             seedream: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="seedreamGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#11998e"/><stop offset="100%" style="stop-color:#38ef7d"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#seedreamGrad)"/><circle cx="12" cy="12" r="5" fill="white" opacity="0.9"/><circle cx="12" cy="12" r="2" fill="#11998e"/></svg>`,
-            kontext: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#000"/><path fill="white" d="M6 6h5v5H6V6zm7 0h5v5h-5V6zm-7 7h5v5H6v-5zm7 0h5v5h-5v-5z"/><circle cx="12" cy="12" r="3" fill="#FF6B6B"/></svg>`,
-            nanobanana: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#FFF59D"/><path fill="#FFD54F" d="M8 6c0 0-2 4-2 8s3 6 6 6c2 0 4-1 5-3 0 0-2 1-4 1-3 0-5-3-5-6s2-6 2-6H8z"/><circle cx="16" cy="10" r="1.5" fill="#795548"/></svg>`,
             gptimage: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#10A37F"/><path fill="white" d="M12 4l7 4v8l-7 4-7-4V8l7-4zm0 2.5L7.5 9v6l4.5 2.5 4.5-2.5V9L12 6.5z"/><circle cx="12" cy="12" r="2" fill="white"/></svg>`,
             video: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="videoGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#f093fb"/><stop offset="100%" style="stop-color:#f5576c"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#videoGrad)"/><rect x="4" y="7" width="16" height="10" rx="2" fill="white" opacity="0.9"/><path fill="#f5576c" d="M10 10v4l4-2-4-2z"/></svg>`,
-            wan: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#3B82F6"/><text x="12" y="15" text-anchor="middle" fill="white" font-size="8" font-weight="bold">WAN</text></svg>`,
-            veo: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#4285F4"/><path fill="white" d="M6 8l4 8 4-6 4 6V8H6z"/></svg>`,
+            flux: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="fluxGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#667eea"/><stop offset="50%" style="stop-color:#764ba2"/><stop offset="100%" style="stop-color:#f093fb"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#fluxGrad)"/><path fill="white" d="M7 7h4v4H7V7zm6 0h4v4h-4V7zm-6 6h4v4H7v-4zm6 0h4v4h-4v-4z" opacity="0.9"/></svg>`,
             default: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#6B7280"/><circle cx="12" cy="10" r="4" fill="white"/><path fill="white" d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>`
         };
 
         function getModelAvatar(modelId) {
-            // Text models
             if (modelId.includes('gemini')) return MODEL_AVATARS.google;
             if (modelId.includes('openai') || modelId.includes('gpt')) return MODEL_AVATARS.openai;
             if (modelId.includes('claude')) return MODEL_AVATARS.anthropic;
             if (modelId.includes('grok')) return MODEL_AVATARS.xai;
+            if (modelId.includes('nova')) return MODEL_AVATARS.amazon;
             if (modelId.includes('deepseek')) return MODEL_AVATARS.deepseek;
             if (modelId.includes('mistral')) return MODEL_AVATARS.mistral;
             if (modelId.includes('perplexity')) return MODEL_AVATARS.perplexity;
-            if (modelId.includes('nova')) return MODEL_AVATARS.amazon;
             if (modelId.includes('qwen')) return MODEL_AVATARS.qwen;
             if (modelId.includes('kimi')) return MODEL_AVATARS.kimi;
             if (modelId.includes('glm')) return MODEL_AVATARS.glm;
@@ -1262,18 +1618,10 @@
             if (modelId.includes('chickytutor')) return MODEL_AVATARS.chickytutor;
             if (modelId.includes('midijourney')) return MODEL_AVATARS.midijourney;
             if (modelId.includes('nomnom')) return MODEL_AVATARS.nomnom;
-            // Image models
-            if (modelId.includes('flux') || modelId.includes('klein')) return MODEL_AVATARS.flux;
-            if (modelId.includes('zimage')) return MODEL_AVATARS.flux;
-            if (modelId.includes('turbo')) return MODEL_AVATARS.sdxl;
-            if (modelId.includes('seedream')) return MODEL_AVATARS.seedream;
-            if (modelId.includes('kontext')) return MODEL_AVATARS.kontext;
-            if (modelId.includes('nanobanana')) return MODEL_AVATARS.nanobanana;
-            if (modelId.includes('gptimage')) return MODEL_AVATARS.gptimage;
-            // Video models
-            if (modelId.includes('seedance')) return MODEL_AVATARS.video;
-            if (modelId.includes('wan')) return MODEL_AVATARS.wan;
-            if (modelId.includes('veo')) return MODEL_AVATARS.veo;
+            if (modelId.includes('flux') || modelId.includes('klein') || modelId.includes('zimage')) return MODEL_AVATARS.flux;
+            if (modelId.includes('seedream') || modelId.includes('seedance')) return MODEL_AVATARS.seedream;
+            if (modelId.includes('gptimage') || modelId.includes('nanobanana') || modelId.includes('kontext')) return MODEL_AVATARS.gptimage;
+            if (modelId.includes('wan') || modelId.includes('veo')) return MODEL_AVATARS.video;
             return MODEL_AVATARS.default;
         }
 
@@ -1281,64 +1629,64 @@
             text: {
                 fast: [
                     { id: 'nova-fast', name: 'Amazon Nova Micro', desc: '26.3K ответов', caps: [] },
-                    { id: 'gemini-fast', name: 'Gemini 2.5 Flash Lite', desc: '3.5K ответов', caps: ['vision', 'search', 'code'] },
-                    { id: 'qwen-coder', name: 'Qwen3 Coder 30B', desc: '2.8K ответов', caps: [], isNew: true },
-                    { id: 'mistral', name: 'Mistral Small 3.2', desc: '2.7K ответов', caps: [] },
+                    { id: 'qwen-coder', name: 'Qwen3 Coder 30B', desc: '8.8K ответов', caps: [], isNew: true },
+                    { id: 'gemini-fast', name: 'Gemini 2.5 Flash Lite', desc: '3.4K ответов', caps: ['vision', 'search', 'code'] },
+                    { id: 'mistral', name: 'Mistral Small 3.2 24B', desc: '2.6K ответов', caps: [] },
                     { id: 'openai-fast', name: 'GPT-5 Nano', desc: '700 ответов', caps: ['vision'] }
                 ],
                 standard: [
-                    { id: 'grok', name: 'Grok 4 Fast', desc: '900 ответов', caps: [] },
-                    { id: 'openai', name: 'GPT-5 Mini', desc: '800 ответов', caps: ['vision'] },
+                    { id: 'grok', name: 'xAI Grok 4 Fast', desc: '900 ответов', caps: [] },
+                    { id: 'openai', name: 'GPT-5 Mini', desc: '850 ответов', caps: ['vision'] },
                     { id: 'perplexity-fast', name: 'Perplexity Sonar', desc: '550 ответов', caps: ['search'] },
-                    { id: 'deepseek', name: 'DeepSeek V3.2', desc: '450 ответов', caps: ['reasoning'] },
-                    { id: 'gemini-search', name: 'Gemini 3 Flash (Search)', desc: '300 ответов', caps: ['vision', 'search', 'code'] },
-                    { id: 'gemini', name: 'Gemini 3 Flash', desc: '150 ответов', caps: ['vision', 'search', 'code'] },
-                    { id: 'openai-audio', name: 'GPT-4o Mini Audio', desc: '200 ответов', caps: ['vision'] }
+                    { id: 'deepseek', name: 'DeepSeek V3.2', desc: '500 ответов', caps: ['reasoning'] },
+                    { id: 'gemini-search', name: 'Gemini 3 Flash', desc: '250 ответов', caps: ['vision', 'search', 'code'] },
+                    { id: 'openai-audio', name: 'GPT-4o Mini Audio', desc: '200 ответов', caps: ['vision'] },
+                    { id: 'gemini', name: 'Gemini 3 Flash', desc: '150 ответов', caps: ['vision', 'search', 'code'] }
                 ],
                 reasoning: [
-                    { id: 'perplexity-reasoning', name: 'Perplexity Reasoning', desc: '200 ответов', caps: ['reasoning', 'search'] },
-                    { id: 'kimi', name: 'Kimi K2 Thinking', desc: '100 ответов', caps: ['reasoning'] },
-                    { id: 'glm', name: 'GLM-4.7', desc: '100 ответов', caps: ['reasoning'], isNew: true },
-                    { id: 'minimax', name: 'MiniMax M2.1', desc: '55 ответов', caps: ['reasoning'], isNew: true }
+                    { id: 'perplexity-reasoning', name: 'Perplexity Sonar Reasoning', desc: '150 ответов', caps: ['reasoning', 'search'] },
+                    { id: 'kimi', name: 'Moonshot Kimi K2 Thinking', desc: '100 ответов', caps: ['reasoning'] },
+                    { id: 'glm', name: 'Z.ai GLM-4.7', desc: '85 ответов', caps: ['reasoning'], isNew: true },
+                    { id: 'minimax', name: 'MiniMax M2.1', desc: '85 ответов', caps: ['reasoning'], isNew: true }
                 ],
                 premium: [
-                    { id: 'openai-large', name: 'GPT-5.2', desc: '75 ответов', caps: ['vision', 'reasoning'] },
-                    { id: 'claude-fast', name: 'Claude Haiku 4.5', desc: '55 ответов', caps: ['vision'] },
-                    { id: 'gemini-legacy', name: 'Gemini 2.5 Pro', desc: '30 ответов', caps: ['vision', 'reasoning', 'search', 'code'] },
-                    { id: 'claude', name: 'Claude Sonnet 4.5', desc: '25 ответов', caps: ['vision'] },
-                    { id: 'gemini-large', name: 'Gemini 3 Pro', desc: '25 ответов', caps: ['vision', 'reasoning', 'search'] },
-                    { id: 'claude-large', name: 'Claude Opus 4.5', desc: '15 ответов', caps: ['vision'] }
+                    { id: 'openai-large', name: 'OpenAI GPT-5.2', desc: '65 ответов', caps: ['vision', 'reasoning'] },
+                    { id: 'claude-fast', name: 'Anthropic Claude Haiku 4.5', desc: '55 ответов', caps: ['vision'] },
+                    { id: 'gemini-legacy', name: 'Google Gemini 2.5 Pro', desc: '30 ответов', caps: ['vision', 'reasoning', 'search', 'code'] },
+                    { id: 'claude', name: 'Anthropic Claude Sonnet 4.5', desc: '25 ответов', caps: ['vision'] },
+                    { id: 'gemini-large', name: 'Google Gemini 3 Pro', desc: '25 ответов', caps: ['vision', 'reasoning', 'search', 'code'] },
+                    { id: 'claude-large', name: 'Anthropic Claude Opus 4.5', desc: '15 ответов', caps: ['vision'] }
                 ],
                 special: [
-                    { id: 'chickytutor', name: 'ChickyTutor', desc: 'Language Tutor', caps: [] },
+                    { id: 'chickytutor', name: 'ChickyTutor AI', desc: 'Language Tutor', caps: [] },
                     { id: 'midijourney', name: 'MIDIjourney', desc: 'Music AI', caps: [] },
                     { id: 'nomnom', name: 'NomNom', desc: 'by @Itachi-1824', caps: ['search'], isNew: true }
                 ]
             },
             image: {
                 fast: [
-                    { id: 'flux', name: 'Flux Schnell', desc: '5K изображений', caps: [] },
-                    { id: 'zimage', name: 'Z-Image Turbo', desc: '5K изображений', caps: [] },
-                    { id: 'turbo', name: 'SDXL Turbo', desc: '3.3K изображений', caps: [] }
+                    { id: 'flux', name: 'Flux Schnell', desc: '5K images', caps: [] },
+                    { id: 'zimage', name: 'Z-Image Turbo', desc: '5K images', caps: [] },
+                    { id: 'turbo', name: 'SDXL Turbo', desc: '3.3K images', caps: [] }
                 ],
                 advanced: [
-                    { id: 'klein', name: 'FLUX.2 Klein 4B', desc: '150 изображений', caps: ['vision'], isNew: true },
-                    { id: 'klein-large', name: 'FLUX.2 Klein 9B', desc: '85 изображений', caps: ['vision'], isNew: true },
-                    { id: 'gptimage', name: 'GPT Image 1 Mini', desc: '70 изображений', caps: ['vision'] },
-                    { id: 'seedream', name: 'Seedream 4.0', desc: '35 изображений', caps: ['vision'] },
-                    { id: 'kontext', name: 'FLUX.1 Kontext', desc: '25 изображений', caps: ['vision'] },
-                    { id: 'nanobanana', name: 'NanoBanana', desc: '25 изображений', caps: ['vision'] },
-                    { id: 'seedream-pro', name: 'Seedream 4.5 Pro', desc: '25 изображений', caps: ['vision'] },
-                    { id: 'gptimage-large', name: 'GPT Image 1.5', desc: '15 изображений', caps: ['vision'] },
-                    { id: 'nanobanana-pro', name: 'NanoBanana Pro', desc: '6 изображений', caps: ['vision'] }
+                    { id: 'klein', name: 'FLUX.2 Klein 4B', desc: '150 images', caps: ['vision'], isNew: true },
+                    { id: 'klein-large', name: 'FLUX.2 Klein 9B', desc: '85 images', caps: ['vision'], isNew: true },
+                    { id: 'gptimage', name: 'GPT Image 1 Mini', desc: '75 images', caps: ['vision'] },
+                    { id: 'seedream', name: 'Seedream 4.0', desc: '35 images', caps: ['vision'] },
+                    { id: 'kontext', name: 'FLUX.1 Kontext', desc: '25 images', caps: ['vision'] },
+                    { id: 'nanobanana', name: 'NanoBanana', desc: '25 images', caps: ['vision'] },
+                    { id: 'seedream-pro', name: 'Seedream 4.5 Pro', desc: '25 images', caps: ['vision'] },
+                    { id: 'gptimage-large', name: 'GPT Image 1.5', desc: '10 images', caps: ['vision'] },
+                    { id: 'nanobanana-pro', name: 'NanoBanana Pro', desc: '6 images', caps: ['vision'] }
                 ]
             },
             video: {
                 alpha: [
-                    { id: 'seedance-pro', name: 'Seedance Pro', desc: '10 видео', caps: ['vision'] },
-                    { id: 'seedance', name: 'Seedance Lite', desc: '6 видео', caps: ['vision'] },
-                    { id: 'wan', name: 'Wan 2.6', desc: '5 видео', caps: ['vision'], isNew: true },
-                    { id: 'veo', name: 'Veo 3.1 Fast', desc: '1 видео', caps: ['vision'] }
+                    { id: 'seedance-pro', name: 'Seedance Pro-Fast', desc: '10 videos', caps: ['vision'] },
+                    { id: 'seedance', name: 'Seedance Lite', desc: '6 videos', caps: ['vision'] },
+                    { id: 'wan', name: 'Wan 2.6', desc: '6 videos', caps: ['vision'], isNew: true },
+                    { id: 'veo', name: 'Veo 3.1 Fast', desc: '1 video', caps: ['vision'] }
                 ]
             }
         };
@@ -1349,49 +1697,187 @@
         let attachedFiles = [];
         let isGenerating = false;
         let abortController = null;
-        let chatHistory = [];
+        let chatId = null;
         let generationStartTime = 0;
+        
+        // Virtual File System
+        let virtualFS = {};
+        let currentPreviewFile = null;
+        
+        // Auth state
+        let currentUser = null;
+        let useCloudSync = false;
+        
+        // Telegram auth callback
+        function onTelegramAuth(user) {
+            currentUser = user;
+            useCloudSync = true;
+            localStorage.setItem('telegramUser', JSON.stringify(user));
+            
+            // Save user to Firebase
+            db.ref('users/' + user.id).set({
+                id: user.id,
+                first_name: user.first_name,
+                last_name: user.last_name || '',
+                username: user.username || '',
+                photo_url: user.photo_url || '',
+                auth_date: user.auth_date,
+                lastLogin: Date.now()
+            });
+            
+            // Migrate local chats to cloud
+            migrateLocalChatsToCloud();
+            
+            updateAuthUI();
+            showToast('✅ Вы вошли как ' + user.first_name);
+        }
+        
+        function migrateLocalChatsToCloud() {
+            if (!currentUser) return;
+            const localChats = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+            if (localChats.length > 0) {
+                localChats.forEach(chat => {
+                    const newRef = db.ref('users/' + currentUser.id + '/chats').push();
+                    db.ref('users/' + currentUser.id + '/chats/' + newRef.key).set({
+                        ...chat,
+                        migratedAt: Date.now()
+                    });
+                });
+                showToast('☁️ ' + localChats.length + ' чатов синхронизировано');
+            }
+        }
+        
+        function logoutUser() {
+            currentUser = null;
+            useCloudSync = false;
+            localStorage.removeItem('telegramUser');
+            updateAuthUI();
+            loadChatHistory();
+            showToast('👋 Вы вышли из аккаунта');
+        }
+        
+        function updateAuthUI() {
+            const notLoggedIn = document.getElementById('authNotLoggedIn');
+            const loggedIn = document.getElementById('authLoggedIn');
+            const userName = document.getElementById('authUserName');
+            const userInfo = document.getElementById('authUserInfo');
+            
+            if (currentUser) {
+                notLoggedIn.style.display = 'none';
+                loggedIn.style.display = 'block';
+                userName.textContent = '👤 ' + currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
+                userInfo.textContent = currentUser.username ? '@' + currentUser.username + ' • Синхронизация ☁️' : 'Синхронизация включена ☁️';
+            } else {
+                notLoggedIn.style.display = 'block';
+                loggedIn.style.display = 'none';
+                // Initialize Telegram widget
+                initTelegramWidget();
+            }
+        }
+        
+        function initTelegramWidget() {
+            // Domain: https://VriskasYT.github.io/Ai
+            const container = document.getElementById('telegramLoginWidget');
+            if (container && !container.hasChildNodes()) {
+                const script = document.createElement('script');
+                script.async = true;
+                script.src = 'https://telegram.org/js/telegram-widget.js?22';
+                script.setAttribute('data-telegram-login', 'VriskasHelperBot');
+                script.setAttribute('data-size', 'large');
+                script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+                script.setAttribute('data-request-access', 'write');
+                container.appendChild(script);
+            }
+        }
 
-        const CODE_MODE_PROMPT = `You are an expert AI coding assistant with file system access. You MUST use XML tags for ALL file operations.
+        const CODE_MODE_PROMPT = `You are an expert AI coding assistant with full file system access. You MUST use XML tags for ALL file operations.
 
-## MANDATORY: File Operation Tags
+## FILE OPERATION TAGS (MANDATORY)
 
-When creating files, you MUST wrap the ENTIRE file content in this tag:
+### Creating files:
 <create_file path="filename.ext">
-FULL FILE CONTENT HERE - DO NOT ABBREVIATE OR SUMMARIZE
+COMPLETE FILE CONTENT - NEVER ABBREVIATE
 </create_file>
 
-When editing files:
+### Editing files:
 <edit_file path="filename.ext">
 <old>exact text to find</old>
 <new>replacement text</new>
 </edit_file>
 
-When reading files:
+### Reading files:
 <read_file path="filename.ext"/>
 
-When deleting files:
+### Deleting files:
 <delete_file path="filename.ext"/>
 
-## CRITICAL RULES:
-1. ALWAYS use <create_file> tags when asked to write ANY code, create ANY file, or build ANYTHING
-2. Include the COMPLETE code inside tags - never say "rest of code here" or abbreviate
-3. For web projects: create complete HTML files with embedded CSS and JavaScript
-4. Explain what each file does BEFORE creating it
-5. After creating files, explain how to use them
-6. Write explanations in the user's language (Russian if they write in Russian)
+### Renaming files:
+<rename_file old_path="old.txt" new_path="new.txt"/>
 
-Example - if user asks "create a snake game":
-I'll create a complete Snake game for you.
+### Copying files:
+<copy_file src="source.txt" dest="destination.txt"/>
+
+### Moving files:
+<move_file src="old/path.txt" dest="new/path.txt"/>
+
+### Listing directory:
+<list_files path="./"/>
+
+### Running/executing file:
+<run_file path="script.js"/>
+
+### Deploying file:
+<deploy_file path="index.html"/>
+
+### Search in files:
+<search_in_file path="*.js" query="functionName"/>
+
+### Show file diff:
+<diff_file path="file.txt"/>
+
+### Create directory:
+<create_dir path="new_folder/"/>
+
+### Install package:
+<install_package name="lodash"/>
+
+### Run command:
+<run_command cmd="npm install"/>
+
+### Download file:
+<download_file url="https://example.com/file.zip" path="file.zip"/>
+
+### Append to file:
+<append_file path="log.txt">
+New content to append
+</append_file>
+
+### Insert at line:
+<insert_at_line path="file.txt" line="5">
+Content to insert at line 5
+</insert_at_line>
+
+## CRITICAL RULES:
+1. ALWAYS use file operation tags when writing ANY code or creating files
+2. Include COMPLETE code - never abbreviate or say "rest of code here"
+3. For web projects: ALWAYS create ONE SINGLE HTML file with embedded CSS and JavaScript
+4. NEVER create separate .css or .js files - put everything in ONE HTML file
+5. Explain what you're doing BEFORE each operation
+6. After creating files, explain how to use them
+7. Write in user's language (Russian if they write in Russian)
+8. Make the code visually beautiful with modern CSS styling
+
+Example for "create snake game":
+I'll create a Snake game.
 
 <create_file path="snake.html">
 <!DOCTYPE html>
 <html>
-... complete game code ...
+...complete code...
 </html>
 </create_file>
 
-Now you can open snake.html in a browser to play!`;
+Open snake.html in browser to play!`;
 
         document.addEventListener('DOMContentLoaded', () => {
             loadSettings();
@@ -1418,6 +1904,17 @@ Now you can open snake.html in a browser to play!`;
         }
 
         function loadSettings() {
+            // Check for saved Telegram user
+            try {
+                const savedUser = localStorage.getItem('telegramUser');
+                if (savedUser) {
+                    currentUser = JSON.parse(savedUser);
+                    useCloudSync = true;
+                }
+            } catch {}
+            
+            updateAuthUI();
+            
             if (localStorage.getItem('darkTheme') === 'true') {
                 document.body.classList.add('dark-theme');
                 document.getElementById('darkThemeToggle').checked = true;
@@ -1426,12 +1923,50 @@ Now you can open snake.html in a browser to play!`;
                 const saved = localStorage.getItem('currentModel');
                 if (saved) {
                     currentModel = JSON.parse(saved);
+                    // Update caps from current model definitions
+                    for (const [type, subcats] of Object.entries(MODELS)) {
+                        for (const [subcat, models] of Object.entries(subcats)) {
+                            const found = models.find(m => m.id === currentModel.id);
+                            if (found) {
+                                currentModel.caps = found.caps;
+                                currentModel.type = type;
+                                break;
+                            }
+                        }
+                    }
                     document.getElementById('selectedModelName').textContent = currentModel.name;
                 }
             } catch {}
-            const sp = localStorage.getItem('systemPrompt');
-            if (sp) document.getElementById('systemPrompt').value = sp;
-            document.getElementById('autoScrollToggle').checked = localStorage.getItem('autoScroll') === 'true';
+            
+            // Load settings from localStorage (default)
+            const localSettings = JSON.parse(localStorage.getItem('settings') || '{}');
+            if (localSettings.systemPrompt) document.getElementById('systemPrompt').value = localSettings.systemPrompt;
+            if (localSettings.temperature) {
+                document.getElementById('temperatureSlider').value = localSettings.temperature;
+                updateTempValue();
+            }
+            if (localSettings.maxTokens) {
+                document.getElementById('tokensSlider').value = localSettings.maxTokens;
+                updateTokensValue();
+            }
+            if (localSettings.streaming !== undefined) document.getElementById('streamingToggle').checked = localSettings.streaming;
+            if (localSettings.autoScroll !== undefined) document.getElementById('autoScrollToggle').checked = localSettings.autoScroll;
+            
+            // If logged in, also sync from Firebase
+            if (currentUser && useCloudSync) {
+                db.ref('users/' + currentUser.id + '/settings').once('value', snap => {
+                    const data = snap.val() || {};
+                    if (data.systemPrompt) document.getElementById('systemPrompt').value = data.systemPrompt;
+                    if (data.temperature) {
+                        document.getElementById('temperatureSlider').value = data.temperature;
+                        updateTempValue();
+                    }
+                    if (data.maxTokens) {
+                        document.getElementById('tokensSlider').value = data.maxTokens;
+                        updateTokensValue();
+                    }
+                });
+            }
         }
 
         function toggleDarkTheme() {
@@ -1440,7 +1975,10 @@ Now you can open snake.html in a browser to play!`;
         }
 
         function updateTempValue() { document.getElementById('tempValue').textContent = document.getElementById('temperatureSlider').value; }
-        function updateTokensValue() { document.getElementById('tokensValue').textContent = document.getElementById('tokensSlider').value; }
+        function updateTokensValue() { 
+            const val = parseInt(document.getElementById('tokensSlider').value);
+            document.getElementById('tokensValue').textContent = val >= 16384 ? '∞ Неограничено' : val; 
+        }
 
         function buildModelList() {
             const container = document.getElementById('modelList');
@@ -1448,7 +1986,7 @@ Now you can open snake.html in a browser to play!`;
             const cats = {
                 text: { fast: '💬 Быстрые', standard: '💬 Стандартные', reasoning: '🧠 Reasoning', premium: '💎 Премиум', special: '✨ Специальные' },
                 image: { fast: '🖼️ Быстрые', advanced: '🖼️ Продвинутые' },
-                video: { alpha: '🎬 Видео' }
+                video: { alpha: '🎬 Видео (alpha)' }
             };
             for (const [type, subcats] of Object.entries(MODELS)) {
                 for (const [subcat, models] of Object.entries(subcats)) {
@@ -1532,11 +2070,30 @@ Now you can open snake.html in a browser to play!`;
 
         function toggleSettings() {
             const p = document.getElementById('settingsPanel'), o = document.getElementById('overlay');
+            const btn = document.querySelector('.header-right .icon-btn:last-child');
             const open = p.classList.toggle('open');
             o.classList.toggle('show', open);
+            // Animate settings icon
+            if (btn) {
+                btn.classList.add('settings-rotating');
+                setTimeout(() => btn.classList.remove('settings-rotating'), 500);
+            }
+            // Save settings when closing
             if (!open) {
-                localStorage.setItem('systemPrompt', document.getElementById('systemPrompt').value);
-                localStorage.setItem('autoScroll', document.getElementById('autoScrollToggle').checked);
+                const settings = {
+                    systemPrompt: document.getElementById('systemPrompt').value,
+                    temperature: document.getElementById('temperatureSlider').value,
+                    maxTokens: document.getElementById('tokensSlider').value,
+                    streaming: document.getElementById('streamingToggle').checked,
+                    autoScroll: document.getElementById('autoScrollToggle').checked
+                };
+                // Always save to localStorage
+                localStorage.setItem('settings', JSON.stringify(settings));
+                
+                // If logged in, also save to Firebase
+                if (currentUser && useCloudSync) {
+                    db.ref('users/' + currentUser.id + '/settings').update(settings);
+                }
             }
         }
 
@@ -1550,6 +2107,7 @@ Now you can open snake.html in a browser to play!`;
         function closeAllPanels() {
             document.getElementById('settingsPanel').classList.remove('open');
             document.getElementById('historyPanel').style.left = '-100%';
+            document.getElementById('fileExplorer').classList.remove('open');
             document.getElementById('overlay').classList.remove('show');
             document.getElementById('modelDropdown').classList.remove('show');
             document.getElementById('modelBtn').classList.remove('open');
@@ -1563,12 +2121,33 @@ Now you can open snake.html in a browser to play!`;
         });
 
         function newChat() {
+            chatId = null;
             conversationHistory = [];
             attachedImages = [];
             attachedFiles = [];
-            document.getElementById('messages').innerHTML = '';
-            document.getElementById('messagesWrapper').classList.add('hidden');
-            document.getElementById('welcomeScreen').classList.remove('hidden');
+            virtualFS = {};
+            renderFileExplorer();
+            
+            const messagesWrapper = document.getElementById('messagesWrapper');
+            const welcomeScreen = document.getElementById('welcomeScreen');
+            
+            // Animate transition
+            if (!messagesWrapper.classList.contains('hidden')) {
+                messagesWrapper.style.opacity = '0';
+                messagesWrapper.style.transform = 'translateY(-10px)';
+                setTimeout(() => {
+                    document.getElementById('messages').innerHTML = '';
+                    messagesWrapper.classList.add('hidden');
+                    messagesWrapper.style.opacity = '';
+                    messagesWrapper.style.transform = '';
+                    welcomeScreen.classList.remove('hidden', 'hiding');
+                    welcomeScreen.style.animation = 'fadeIn 0.3s ease-out';
+                }, 200);
+            } else {
+                document.getElementById('messages').innerHTML = '';
+                welcomeScreen.classList.remove('hidden', 'hiding');
+            }
+            
             document.getElementById('newChatBtn').style.display = 'none';
             document.getElementById('messageInput').value = '';
             document.getElementById('attachedFiles').innerHTML = '';
@@ -1587,7 +2166,34 @@ Now you can open snake.html in a browser to play!`;
 
         function handleSendClick() { if (isGenerating) stopGeneration(); else sendMessage(); }
 
-        function stopGeneration() { if (abortController) { abortController.abort(); abortController = null; } isGenerating = false; updateSendButton(); }
+        let lastPendingOps = [];
+        
+        function stopGeneration() { 
+            if (abortController) { 
+                abortController.abort(); 
+                abortController = null; 
+                // Update pending ops to show "stopped"
+                if (lastPendingOps.length) {
+                    const contentEl = document.querySelector('.message.assistant:last-child .message-content');
+                    if (contentEl) {
+                        const pendingBlocks = contentEl.querySelectorAll('.file-op-pending');
+                        pendingBlocks.forEach(block => {
+                            block.classList.remove('file-op-pending');
+                            block.classList.add('file-op-stopped');
+                            const status = block.querySelector('.file-op-status');
+                            if (status) {
+                                const indicator = status.querySelector('.file-op-indicator');
+                                if (indicator) indicator.textContent = '⏹️ Остановлено';
+                                const progress = status.querySelector('.file-op-progress');
+                                if (progress) progress.remove();
+                            }
+                        });
+                    }
+                }
+            } 
+            isGenerating = false; 
+            updateSendButton(); 
+        }
 
         function updateSendButton() {
             const btn = document.getElementById('sendBtn'), si = document.getElementById('sendIcon'), sti = document.getElementById('stopIcon');
@@ -1636,43 +2242,174 @@ Now you can open snake.html in a browser to play!`;
 
         function parseFileOperations(rawText) {
             const ops = [];
-            // create_file - match both with and without newlines
-            const createRe = /<create_file\s+path=["']([^"']+)["']>([\s\S]*?)<\/create_file>/gi;
             let m;
-            while ((m = createRe.exec(rawText)) !== null) ops.push({ type: 'CREATE', icon: '📄', path: m[1], content: m[2].trim(), status: 'Файл создан' });
+            // create_file
+            const createRe = /<create_file\s+path=["']([^"']+)["']>([\s\S]*?)<\/create_file>/gi;
+            while ((m = createRe.exec(rawText)) !== null) ops.push({ type: 'CREATE', icon: '📄', path: m[1], content: m[2].trim(), status: 'Создан' });
             // edit_file
             const editRe = /<edit_file\s+path=["']([^"']+)["']>\s*<old>([\s\S]*?)<\/old>\s*<new>([\s\S]*?)<\/new>\s*<\/edit_file>/gi;
-            while ((m = editRe.exec(rawText)) !== null) ops.push({ type: 'EDIT', icon: '✏️', path: m[1], content: `--- OLD ---\n${m[2].trim()}\n\n+++ NEW +++\n${m[3].trim()}`, status: 'Файл изменён' });
+            while ((m = editRe.exec(rawText)) !== null) ops.push({ type: 'EDIT', icon: '✏️', path: m[1], content: `--- OLD ---\n${m[2].trim()}\n\n+++ NEW +++\n${m[3].trim()}`, status: 'Изменён' });
             // read_file
             const readRe = /<read_file\s+path=["']([^"']+)["']\s*\/?>/gi;
-            while ((m = readRe.exec(rawText)) !== null) ops.push({ type: 'READ', icon: '👁️', path: m[1], content: '', status: 'Файл прочитан' });
+            while ((m = readRe.exec(rawText)) !== null) ops.push({ type: 'READ', icon: '👁️', path: m[1], content: '', status: 'Прочитан' });
             // delete_file
             const delRe = /<delete_file\s+path=["']([^"']+)["']\s*\/?>/gi;
-            while ((m = delRe.exec(rawText)) !== null) ops.push({ type: 'DELETE', icon: '🗑️', path: m[1], content: '', status: 'Файл удалён' });
+            while ((m = delRe.exec(rawText)) !== null) ops.push({ type: 'DELETE', icon: '🗑️', path: m[1], content: '', status: 'Удалён' });
+            // rename_file
+            const renameRe = /<rename_file\s+old_path=["']([^"']+)["']\s+new_path=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = renameRe.exec(rawText)) !== null) ops.push({ type: 'RENAME', icon: '📝', path: `${m[1]} → ${m[2]}`, content: '', status: 'Переименован' });
+            // copy_file
+            const copyRe = /<copy_file\s+src=["']([^"']+)["']\s+dest=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = copyRe.exec(rawText)) !== null) ops.push({ type: 'COPY', icon: '📋', path: `${m[1]} → ${m[2]}`, content: '', status: 'Скопирован' });
+            // move_file
+            const moveRe = /<move_file\s+src=["']([^"']+)["']\s+dest=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = moveRe.exec(rawText)) !== null) ops.push({ type: 'MOVE', icon: '📦', path: `${m[1]} → ${m[2]}`, content: '', status: 'Перемещён' });
+            // list_files
+            const listRe = /<list_files\s+path=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = listRe.exec(rawText)) !== null) ops.push({ type: 'LIST', icon: '📂', path: m[1], content: '', status: 'Список' });
+            // run_file
+            const runRe = /<run_file\s+path=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = runRe.exec(rawText)) !== null) ops.push({ type: 'RUN', icon: '▶️', path: m[1], content: '', status: 'Выполнен' });
+            // deploy_file
+            const deployRe = /<deploy_file\s+path=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = deployRe.exec(rawText)) !== null) ops.push({ type: 'DEPLOY', icon: '🚀', path: m[1], content: '', status: 'Развёрнут' });
+            // search_in_file
+            const searchRe = /<search_in_file\s+path=["']([^"']+)["']\s+query=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = searchRe.exec(rawText)) !== null) ops.push({ type: 'SEARCH', icon: '🔍', path: `${m[1]} : "${m[2]}"`, content: '', status: 'Найдено' });
+            // diff_file
+            const diffRe = /<diff_file\s+path=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = diffRe.exec(rawText)) !== null) ops.push({ type: 'DIFF', icon: '📊', path: m[1], content: '', status: 'Diff показан' });
+            // create_dir
+            const mkdirRe = /<create_dir\s+path=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = mkdirRe.exec(rawText)) !== null) ops.push({ type: 'MKDIR', icon: '📁', path: m[1], content: '', status: 'Папка создана' });
+            // install_package
+            const installRe = /<install_package\s+name=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = installRe.exec(rawText)) !== null) ops.push({ type: 'INSTALL', icon: '📦', path: m[1], content: '', status: 'Установлено' });
+            // run_command
+            const cmdRe = /<run_command\s+cmd=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = cmdRe.exec(rawText)) !== null) ops.push({ type: 'CMD', icon: '⚡', path: m[1], content: '', status: 'Выполнено' });
+            // download_file
+            const downloadRe = /<download_file\s+url=["']([^"']+)["']\s+path=["']([^"']+)["']\s*\/?>/gi;
+            while ((m = downloadRe.exec(rawText)) !== null) ops.push({ type: 'DOWNLOAD', icon: '⬇️', path: m[2], content: `URL: ${m[1]}`, status: 'Скачано' });
+            // append_file
+            const appendRe = /<append_file\s+path=["']([^"']+)["']>([\s\S]*?)<\/append_file>/gi;
+            while ((m = appendRe.exec(rawText)) !== null) ops.push({ type: 'APPEND', icon: '➕', path: m[1], content: m[2].trim(), status: 'Добавлено' });
+            // insert_at_line
+            const insertRe = /<insert_at_line\s+path=["']([^"']+)["']\s+line=["'](\d+)["']>([\s\S]*?)<\/insert_at_line>/gi;
+            while ((m = insertRe.exec(rawText)) !== null) ops.push({ type: 'INSERT', icon: '📍', path: `${m[1]}:${m[2]}`, content: m[3].trim(), status: 'Вставлено' });
             return ops;
         }
 
-        // Parse URLs from text for search sources
         function parseSearchSources(text) {
             const sources = [];
             const seenUrls = new Set();
+            
+            // Parse markdown links [title](url)
             const mdLinkRe = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
             let m;
             while ((m = mdLinkRe.exec(text)) !== null) {
-                if (!seenUrls.has(m[2])) { seenUrls.add(m[2]); sources.push({ title: m[1], url: m[2] }); }
-            }
-            const urlRe = /(?<!\]\()https?:\/\/[^\s\)\]<>]+/g;
-            while ((m = urlRe.exec(text)) !== null) {
-                if (!seenUrls.has(m[0])) {
-                    seenUrls.add(m[0]);
-                    try { sources.push({ title: new URL(m[0]).hostname.replace('www.', ''), url: m[0] }); } catch {}
+                if (!seenUrls.has(m[2])) { 
+                    seenUrls.add(m[2]); 
+                    sources.push({ title: m[1], url: m[2] }); 
                 }
             }
-            return sources.slice(0, 8);
+            
+            // Parse citation style [1], [2] etc with nearby URLs
+            const citationRe = /\[(\d+)\]/g;
+            const urlsInText = text.match(/https?:\/\/[^\s\)\]<>"]+/g) || [];
+            
+            // Parse standalone URLs
+            const urlRe = /(?<!\]\()https?:\/\/[^\s\)\]<>"]+/g;
+            while ((m = urlRe.exec(text)) !== null) {
+                const url = m[0].replace(/[.,;:!?]+$/, ''); // Clean trailing punctuation
+                if (!seenUrls.has(url)) {
+                    seenUrls.add(url);
+                    try { 
+                        const hostname = new URL(url).hostname.replace('www.', '');
+                        sources.push({ title: hostname, url: url }); 
+                    } catch {}
+                }
+            }
+            
+            // Parse reference style links like: 1. https://...
+            const refRe = /^\s*(\d+)\.\s*(https?:\/\/[^\s]+)/gm;
+            while ((m = refRe.exec(text)) !== null) {
+                if (!seenUrls.has(m[2])) {
+                    seenUrls.add(m[2]);
+                    try { 
+                        sources.push({ title: `Источник ${m[1]}`, url: m[2] }); 
+                    } catch {}
+                }
+            }
+            
+            return sources.slice(0, 12);
         }
 
         function getDomainFromUrl(url) { try { return new URL(url).hostname.replace('www.', ''); } catch { return url; } }
         function getFaviconUrl(url) { try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`; } catch { return ''; } }
+
+        // Parse pending (incomplete) file operations for streaming animation
+        function parsePendingFileOps(text) {
+            const pending = [];
+            
+            // Helper to check incomplete tags
+            const checkIncomplete = (openRe, closeRe, type, icon, action) => {
+                const opens = [...text.matchAll(openRe)];
+                const closes = [...text.matchAll(closeRe)];
+                if (opens.length > closes.length) {
+                    const lastOpen = opens[opens.length - 1];
+                    // Calculate approximate progress based on content length
+                    const startIdx = lastOpen.index + lastOpen[0].length;
+                    const contentAfter = text.substring(startIdx);
+                    const lines = contentAfter.split('\n').length;
+                    pending.push({ 
+                        type, 
+                        icon, 
+                        path: lastOpen[1], 
+                        status: action,
+                        lines: lines
+                    });
+                }
+            };
+            
+            checkIncomplete(/<create_file\s+path=["']([^"']+)["']>/gi, /<\/create_file>/gi, 'CREATE', '📄', 'Создание');
+            checkIncomplete(/<edit_file\s+path=["']([^"']+)["']>/gi, /<\/edit_file>/gi, 'EDIT', '✏️', 'Редактирование');
+            checkIncomplete(/<deploy_file\s+path=["']([^"']+)["']>/gi, /<\/deploy_file>/gi, 'DEPLOY', '🚀', 'Деплой');
+            checkIncomplete(/<run_file\s+path=["']([^"']+)["']>/gi, /<\/run_file>/gi, 'RUN', '▶️', 'Выполнение');
+            
+            return pending;
+        }
+
+        function renderPendingFileOps(ops, stopped = false, failed = false) {
+            return ops.map(op => {
+                let statusText = op.status + '...';
+                let statusClass = 'file-op-pending';
+                let statusIcon = '⏳';
+                if (stopped) { 
+                    statusText = op.status + ' остановлено ⏹️'; 
+                    statusClass = 'file-op-stopped'; 
+                    statusIcon = '⏹️';
+                }
+                if (failed) { 
+                    statusText = op.status + ' ошибка ❌'; 
+                    statusClass = 'file-op-failed'; 
+                    statusIcon = '❌';
+                }
+                const linesInfo = op.lines ? ` • ${op.lines} строк` : '';
+                return `
+                <div class="file-op-block ${statusClass}">
+                    <div class="file-op-header">
+                        <span class="file-op-icon">${op.icon}</span>
+                        <span class="file-op-path">${escapeHtml(op.path)}</span>
+                        <span class="file-op-type">${op.type}</span>
+                    </div>
+                    <div class="file-op-status">
+                        <span class="file-op-indicator">${statusIcon} ${statusText}${linesInfo}</span>
+                        ${!stopped && !failed ? '<div class="file-op-progress"><div class="file-op-progress-bar"></div></div>' : ''}
+                    </div>
+                </div>
+            `}).join('');
+        }
 
         function renderSearchSources(sources, searchOn) {
             if (!searchOn) return '';
@@ -1685,7 +2422,6 @@ Now you can open snake.html in a browser to play!`;
             return `<div class="search-block"><div class="search-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🔍 Поиск в интернете • ${sources.length} источник${pl}</div><div class="search-sources"><div class="search-sources-title">Источники</div><div class="search-sources-grid">${sourcesHtml}</div></div></div>`;
         }
         
-        // Parse thinking blocks from text if model returns it inline
         function parseThinkingFromText(text) {
             const thinkRe = /<thinking>([\s\S]*?)<\/thinking>/gi;
             let thinking = '';
@@ -1698,7 +2434,6 @@ Now you can open snake.html in a browser to play!`;
             return text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
         }
         
-        // Check if thinking block is complete (has closing tag)
         function isThinkingComplete(text) {
             const openCount = (text.match(/<thinking>/gi) || []).length;
             const closeCount = (text.match(/<\/thinking>/gi) || []).length;
@@ -1707,16 +2442,52 @@ Now you can open snake.html in a browser to play!`;
 
         function removeFileOpTags(text) {
             return text
-                .replace(/<create_file\s+path="[^"]+">[\s\S]*?<\/create_file>/g, '')
-                .replace(/<edit_file\s+path="[^"]+">\s*<old>[\s\S]*?<\/old>\s*<new>[\s\S]*?<\/new>\s*<\/edit_file>/g, '')
-                .replace(/<read_file\s+path="[^"]+"\/>/g, '')
-                .replace(/<delete_file\s+path="[^"]+"\/>/g, '')
+                .replace(/<create_file\s+path=["'][^"']+["']>[\s\S]*?<\/create_file>/gi, '')
+                .replace(/<edit_file\s+path=["'][^"']+["']>[\s\S]*?<\/edit_file>/gi, '')
+                .replace(/<read_file\s+[^>]+\/?>/gi, '')
+                .replace(/<delete_file\s+[^>]+\/?>/gi, '')
+                .replace(/<rename_file\s+[^>]+\/?>/gi, '')
+                .replace(/<copy_file\s+[^>]+\/?>/gi, '')
+                .replace(/<move_file\s+[^>]+\/?>/gi, '')
+                .replace(/<list_files\s+[^>]+\/?>/gi, '')
+                .replace(/<run_file\s+[^>]+\/?>/gi, '')
+                .replace(/<deploy_file\s+[^>]+\/?>/gi, '')
+                .replace(/<search_in_file\s+[^>]+\/?>/gi, '')
+                .replace(/<diff_file\s+[^>]+\/?>/gi, '')
+                .replace(/<create_dir\s+[^>]+\/?>/gi, '')
+                .replace(/<install_package\s+[^>]+\/?>/gi, '')
+                .replace(/<run_command\s+[^>]+\/?>/gi, '')
+                .replace(/<download_file\s+[^>]+\/?>/gi, '')
+                .replace(/<append_file\s+path=["'][^"']+["']>[\s\S]*?<\/append_file>/gi, '')
+                .replace(/<insert_at_line\s+[^>]+>[\s\S]*?<\/insert_at_line>/gi, '')
                 .trim();
         }
 
         function formatContent(text) {
             if (!text) return '';
             let h = escapeHtml(text);
+            // Десятичные дроби и числа - подсветка
+            h = h.replace(/(\d+[.,]\d+)/g, '<span style="color:var(--accent);font-weight:500">$1</span>');
+            // Проценты
+            h = h.replace(/(\d+)%/g, '<span style="color:var(--accent);font-weight:500">$1%</span>');
+            // Простые дроби типа 1/2, 3/4 → красивые дроби
+            h = h.replace(/\b1\/2\b/g, '½');
+            h = h.replace(/\b1\/3\b/g, '⅓');
+            h = h.replace(/\b2\/3\b/g, '⅔');
+            h = h.replace(/\b1\/4\b/g, '¼');
+            h = h.replace(/\b3\/4\b/g, '¾');
+            h = h.replace(/\b1\/5\b/g, '⅕');
+            h = h.replace(/\b2\/5\b/g, '⅖');
+            h = h.replace(/\b3\/5\b/g, '⅗');
+            h = h.replace(/\b4\/5\b/g, '⅘');
+            h = h.replace(/\b1\/6\b/g, '⅙');
+            h = h.replace(/\b5\/6\b/g, '⅚');
+            h = h.replace(/\b1\/8\b/g, '⅛');
+            h = h.replace(/\b3\/8\b/g, '⅜');
+            h = h.replace(/\b5\/8\b/g, '⅝');
+            h = h.replace(/\b7\/8\b/g, '⅞');
+            // Другие дроби → sup/sub формат
+            h = h.replace(/(\d+)\/(\d+)/g, '<sup>$1</sup>⁄<sub>$2</sub>');
             h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
                 const isJs = ['javascript','js'].includes(lang.toLowerCase());
                 return `<div class="code-header"><span class="code-lang">${lang||'code'}</span><div class="code-actions"><button class="code-btn" onclick="copyCodeBlock(this)">📋 Копировать</button>${isJs?'<button class="code-btn" onclick="runCode(this)">▶️ Запустить</button>':''}</div></div><pre class="with-header"><code>${code.trim()}</code></pre>`;
@@ -1750,7 +2521,7 @@ Now you can open snake.html in a browser to play!`;
                 <div class="file-op-block">
                     <div class="file-op-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
-                        <span class="file-op-icon">${op.icon}</span>
+                        <span class="file-op-icon" style="font-family:'Google Sans Mono',monospace;font-weight:600;">${op.icon}</span>
                         <span class="file-op-path">${escapeHtml(op.path)}</span>
                         <span class="file-op-type">${op.type}</span>
                     </div>
@@ -1758,11 +2529,11 @@ Now you can open snake.html in a browser to play!`;
                         ${op.content ? `
                             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:#2d2d2d;border-bottom:1px solid #404040;">
                                 <span style="color:#888;font-size:12px;font-weight:500;">${langLabel}</span>
-                                <button class="code-btn" onclick="copyFileOpCode('${codeId}')">📋 Копировать</button>
+                                <button class="code-btn" onclick="copyFileOpCode('${codeId}')">[copy]</button>
                             </div>
                             <div class="file-op-code" id="${codeId}">${escapeHtml(op.content)}</div>
                         ` : ''}
-                        <div class="file-op-status">✓ ${op.status}</div>
+                        <div class="file-op-status">[OK] ${op.status}</div>
                     </div>
                 </div>
             `}).join('');
@@ -1842,13 +2613,47 @@ Now you can open snake.html in a browser to play!`;
         function closeImageModal() { document.getElementById('imageModal').classList.remove('show'); }
         function showToast(msg, dur = 3000) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), dur); }
 
+        function createParticles(x, y) {
+            const particles = ['✨', '⭐', '💫', '🌟', '✦'];
+            for (let i = 0; i < 8; i++) {
+                const particle = document.createElement('span');
+                particle.className = 'particle';
+                particle.textContent = particles[Math.floor(Math.random() * particles.length)];
+                particle.style.left = x + 'px';
+                particle.style.top = y + 'px';
+                const angle = (Math.PI * 2 * i) / 8;
+                const distance = 50 + Math.random() * 30;
+                particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+                particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+                document.body.appendChild(particle);
+                setTimeout(() => particle.remove(), 1000);
+            }
+        }
+
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
             if (!message && !attachedImages.length && !attachedFiles.length || isGenerating) return;
+            
+            // Particle effect on send button
+            const sendBtn = document.getElementById('sendBtn');
+            const rect = sendBtn.getBoundingClientRect();
+            createParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
 
-            document.getElementById('welcomeScreen').classList.add('hidden');
-            document.getElementById('messagesWrapper').classList.remove('hidden');
+            const welcomeScreen = document.getElementById('welcomeScreen');
+            const messagesWrapper = document.getElementById('messagesWrapper');
+            
+            if (!welcomeScreen.classList.contains('hidden')) {
+                welcomeScreen.classList.add('hiding');
+                setTimeout(() => {
+                    welcomeScreen.classList.add('hidden');
+                    messagesWrapper.classList.remove('hidden');
+                    messagesWrapper.classList.add('showing');
+                    setTimeout(() => messagesWrapper.classList.remove('showing'), 300);
+                }, 200);
+            } else {
+                messagesWrapper.classList.remove('hidden');
+            }
             document.getElementById('newChatBtn').style.display = 'flex';
 
             const curImgs = [...attachedImages], curFiles = [...attachedFiles];
@@ -1872,7 +2677,6 @@ Now you can open snake.html in a browser to play!`;
             document.getElementById('charCount').textContent = '0 / 32,000';
 
             if (currentModel.type === 'image') await generateImage(message, curImgs);
-            else if (currentModel.type === 'video') await generateVideo(message, curImgs);
             else await generateResponse();
         }
 
@@ -1894,40 +2698,11 @@ Now you can open snake.html in a browser to play!`;
                     const lastC = document.querySelector('.message.assistant:last-child .message-content');
                     if (lastC) lastC.innerHTML += `<img src="${url}" class="generated-image" onclick="openImageModal('${url}')">`;
                     conversationHistory.push({ role: 'assistant', content: `[Изображение: ${prompt}]` });
-                    isGenerating = false; updateSendButton(); saveChatToHistory();
+                    isGenerating = false; updateSendButton(); saveChat();
                 };
                 img.onerror = () => { loadEl.remove(); addMessage('assistant', '❌ Ошибка генерации изображения'); isGenerating = false; updateSendButton(); };
                 img.src = url;
             } catch (e) { loadEl.remove(); addMessage('assistant', `❌ ${e.message}`); isGenerating = false; updateSendButton(); }
-        }
-
-        async function generateVideo(prompt, images = []) {
-            isGenerating = true; updateSendButton(); generationStartTime = Date.now();
-            const msgsEl = document.getElementById('messages');
-            const loadEl = document.createElement('div');
-            loadEl.className = 'message assistant';
-            loadEl.innerHTML = `<div class="message-avatar">${getModelAvatar(currentModel.id)}</div><div class="message-body"><div class="message-header"><span class="message-author">${currentModel.name}</span></div><div class="message-content"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p>🎬 Генерирую видео (это может занять время)...</p></div></div>`;
-            msgsEl.appendChild(loadEl);
-
-            try {
-                const body = { model: currentModel.id, prompt };
-                if (images.length) body.image = images[0].data;
-                const res = await fetch(`${API_BASE}/video`, { method: 'POST', headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-                const genTime = ((Date.now() - generationStartTime) / 1000).toFixed(1) + 's';
-                loadEl.remove();
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.url) {
-                        addMessage('assistant', `🎬 **Видео готово!**\n\nМодель: *${currentModel.name}*`, { genTime });
-                        const lastC = document.querySelector('.message.assistant:last-child .message-content');
-                        if (lastC) lastC.innerHTML += `<video controls class="generated-video" src="${data.url}"></video>`;
-                    } else addMessage('assistant', `🎬 **Видео в обработке**\n\nID: \`${data.id || 'N/A'}\`\nСтатус можно проверить позже.`, { genTime });
-                } else addMessage('assistant', `🎬 **Запрос на генерацию отправлен**\n\nМодель: *${currentModel.name}*`, { genTime });
-                conversationHistory.push({ role: 'assistant', content: `[Видео: ${prompt}]` });
-                saveChatToHistory();
-            } catch (e) { loadEl.remove(); addMessage('assistant', `❌ ${e.message}`); }
-            isGenerating = false; updateSendButton();
         }
 
         async function generateResponse() {
@@ -1949,7 +2724,6 @@ Now you can open snake.html in a browser to play!`;
 
                 if (codeOn) sysPrompt = CODE_MODE_PROMPT + (sysPrompt ? '\n\n' + sysPrompt : '');
                 
-                // For reasoning models, add instruction to show thinking process with <thinking> tags
                 if (reasonOn) {
                     const reasoningInstruction = `
 
@@ -2007,46 +2781,50 @@ Now you can open snake.html in a browser to play!`;
                                     const delta = json.choices?.[0]?.delta;
                                     const message = json.choices?.[0]?.message;
                                     if (delta || message) {
-                                        // Handle reasoning/thinking content from API
                                         const reasoningDelta = delta?.reasoning_content || delta?.thinking || message?.reasoning_content || message?.thinking || '';
                                         if (reasoningDelta) thinkText += reasoningDelta;
                                         
-                                        // Handle main content
                                         const contentDelta = delta?.content || message?.content || '';
                                         if (contentDelta) fullText += contentDelta;
 
-                                        // Parse <thinking> tags from fullText if model outputs them inline
                                         const inlineThinking = parseThinkingFromText(fullText);
                                         const combinedThinking = (thinkText + ' ' + inlineThinking).trim();
                                         
-                                        // Remove <thinking> tags from display text
                                         let cleanFullText = removeThinkingTags(fullText);
 
                                         let displayHtml = '';
                                         
-                                        // Show thinking/reasoning block
                                         if (combinedThinking) {
                                             displayHtml += `<div class="thinking-block"><div class="thinking-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления модели</div><div class="thinking-content">${formatContent(combinedThinking)}</div></div>`;
                                         }
                                         
-                                        // Show search sources
                                         if (searchOn) {
                                             const sources = parseSearchSources(cleanFullText);
                                             displayHtml += renderSearchSources(sources, searchOn);
                                         }
 
-                                        // Parse and display file operations from RAW text (before escaping)
                                         const fileOps = parseFileOperations(cleanFullText);
                                         if (fileOps.length) {
                                             displayHtml += renderFileOps(fileOps);
                                         }
 
-                                        // Remove file op tags and display remaining content
-                                        const cleanText = removeFileOpTags(cleanFullText);
+                                        // Show pending operations with animation (hide raw code)
+                                        const pendingOps = parsePendingFileOps(cleanFullText);
+                                        lastPendingOps = pendingOps; // Save for stop handling
+                                        if (pendingOps.length) {
+                                            displayHtml += renderPendingFileOps(pendingOps);
+                                        }
+
+                                        // Remove incomplete file operation content from display
+                                        let cleanText = removeFileOpTags(cleanFullText);
+                                        // Also hide any text that looks like it's inside an incomplete tag
+                                        cleanText = cleanText.replace(/<create_file[^>]*>[\s\S]*/gi, '');
+                                        cleanText = cleanText.replace(/<edit_file[^>]*>[\s\S]*/gi, '');
+                                        
                                         if (cleanText.trim()) {
                                             displayHtml += formatContent(cleanText);
-                                        } else if (!fileOps.length && !combinedThinking) {
-                                            displayHtml += '<span style="opacity:0.5">Генерация...</span>';
+                                        } else if (!fileOps.length && !pendingOps.length && !combinedThinking) {
+                                            displayHtml += '<span style="opacity:0.5">✨ Генерирую...</span>';
                                         }
                                         
                                         contentEl.innerHTML = displayHtml;
@@ -2058,7 +2836,6 @@ Now you can open snake.html in a browser to play!`;
                         }
                     }
 
-                    // Collapse thinking after completion if it's complete
                     const thinkHdr = contentEl.querySelector('.thinking-header');
                     if (thinkHdr && isThinkingComplete(fullText)) { 
                         thinkHdr.classList.add('collapsed'); 
@@ -2068,19 +2845,19 @@ Now you can open snake.html in a browser to play!`;
                     const genTime = ((Date.now() - generationStartTime) / 1000).toFixed(1) + 's';
                     respEl.querySelector('.message-header').innerHTML += `<span class="message-gen-time">${genTime}</span>`;
                     conversationHistory.push({ role: 'assistant', content: fullText });
+                    
+                    // Process file operations and add to explorer
+                    processFileOperations(fullText);
                 } else {
                     const json = await res.json();
                     const msg = json.choices?.[0]?.message;
                     const content = msg?.content || 'Нет ответа';
                     
-                    // Check all possible reasoning field names from API
                     let thinkContent = msg?.reasoning_content || msg?.thinking || msg?.reasoning || json.thinking || '';
                     
-                    // Also parse inline <thinking> tags from content
                     const inlineThinking = parseThinkingFromText(content);
                     if (inlineThinking) thinkContent = (thinkContent + '\n' + inlineThinking).trim();
                     
-                    // Remove thinking tags from content
                     let cleanContent = removeThinkingTags(content);
                     
                     const genTime = ((Date.now() - generationStartTime) / 1000).toFixed(1) + 's';
@@ -2092,77 +2869,399 @@ Now you can open snake.html in a browser to play!`;
                         extras.searchOn = true;
                     }
                     
-                    // Parse file operations from raw content BEFORE escaping
                     const fileOps = parseFileOperations(cleanContent);
                     if (fileOps.length) extras.fileOps = fileOps;
                     
-                    // Remove file operation tags from display text
                     cleanContent = removeFileOpTags(cleanContent);
                     addMessage('assistant', cleanContent, extras);
                     conversationHistory.push({ role: 'assistant', content });
+                    
+                    // Process file operations and add to explorer
+                    processFileOperations(content);
                 }
 
-                saveChatToHistory();
+                saveChat();
             } catch (e) {
                 typingEl.remove();
-                if (e.name !== 'AbortError') addMessage('assistant', `❌ Ошибка: ${e.message}`);
+                if (e.name === 'AbortError') {
+                    // Already handled in stopGeneration
+                } else {
+                    // Show failed state for pending operations
+                    const lastMsgContent = document.querySelector('.message.assistant:last-child .message-content');
+                    if (lastMsgContent && lastPendingOps.length) {
+                        const pendingBlocks = lastMsgContent.querySelectorAll('.file-op-pending');
+                        pendingBlocks.forEach(block => {
+                            block.classList.remove('file-op-pending');
+                            block.classList.add('file-op-failed');
+                            const status = block.querySelector('.file-op-status');
+                            if (status) {
+                                const indicator = status.querySelector('.file-op-indicator');
+                                if (indicator) indicator.textContent = '❌ Ошибка генерации';
+                                const progress = status.querySelector('.file-op-progress');
+                                if (progress) progress.remove();
+                            }
+                        });
+                    }
+                    addMessage('assistant', `❌ Ошибка: ${e.message}`);
+                }
             }
 
-            isGenerating = false; abortController = null; updateSendButton();
+            isGenerating = false; abortController = null; lastPendingOps = []; updateSendButton();
         }
 
-        function saveChatToHistory() {
+        async function saveChat() {
             if (conversationHistory.length < 2) return;
             const first = conversationHistory[0]?.content;
-            let title = typeof first === 'string' ? first.substring(0, 50) : first?.find?.(p => p?.type === 'text')?.text?.substring(0, 50) || 'Чат';
-            const existing = chatHistory.findIndex(c => {
-                const f = c.messages?.[0]?.content;
-                const ft = typeof f === 'string' ? f : f?.find?.(p => p?.type === 'text')?.text || '';
-                const ct = typeof first === 'string' ? first : first?.find?.(p => p?.type === 'text')?.text || '';
-                return ft === ct && ft !== '';
-            });
-            if (existing !== -1) chatHistory[existing].messages = [...conversationHistory];
-            else chatHistory.unshift({ id: Date.now(), title: title + '...', messages: [...conversationHistory], model: currentModel, date: new Date().toLocaleDateString('ru-RU') });
-            if (chatHistory.length > 50) chatHistory.pop();
-            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
-            renderChatHistory();
+            let title = typeof first === 'string' ? first.substring(0, 40) : first?.find?.(p => p?.type === 'text')?.text?.substring(0, 40) || 'Чат';
+            
+            const chatData = {
+                title: title + '...',
+                messages: conversationHistory.map(m => ({
+                    role: m.role,
+                    content: typeof m.content === 'string' ? m.content : m.content?.find?.(p => p?.type === 'text')?.text || ''
+                })),
+                model: currentModel.id,
+                modelName: currentModel.name,
+                updatedAt: Date.now()
+            };
+            
+            // Always save to localStorage
+            let localChats = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+            
+            if (!chatId) {
+                chatId = 'local_' + Date.now();
+            }
+            
+            const existingIdx = localChats.findIndex(c => c.id === chatId);
+            if (existingIdx !== -1) {
+                localChats[existingIdx] = { id: chatId, ...chatData };
+            } else {
+                localChats.unshift({ id: chatId, ...chatData });
+            }
+            
+            // Keep only last 50 chats
+            if (localChats.length > 50) localChats = localChats.slice(0, 50);
+            localStorage.setItem('chatHistory', JSON.stringify(localChats));
+            
+            // If logged in, also save to Firebase
+            if (currentUser && useCloudSync) {
+                const cloudChatId = chatId.startsWith('local_') ? chatId : chatId;
+                await db.ref('users/' + currentUser.id + '/chats/' + cloudChatId).set(chatData);
+            }
+            
+            loadChatHistory();
         }
 
-        function loadChatHistory() { try { chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]'); renderChatHistory(); } catch { chatHistory = []; } }
+        function loadChatHistory() {
+            // Load from localStorage by default
+            let localChats = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+            
+            if (currentUser && useCloudSync) {
+                // If logged in, merge with cloud chats
+                db.ref('users/' + currentUser.id + '/chats').orderByChild('updatedAt').limitToLast(30).once('value', snap => {
+                    const cloudChats = [];
+                    snap.forEach(child => {
+                        cloudChats.push({ id: child.key, ...child.val() });
+                    });
+                    
+                    // Merge and dedupe
+                    const allChats = [...cloudChats];
+                    localChats.forEach(lc => {
+                        if (!allChats.find(cc => cc.id === lc.id)) {
+                            allChats.push(lc);
+                        }
+                    });
+                    
+                    // Sort by updatedAt
+                    allChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+                    renderChatHistory(allChats.slice(0, 30));
+                });
+            } else {
+                renderChatHistory(localChats);
+            }
+        }
 
-        function renderChatHistory() {
+        function renderChatHistory(chats) {
             const c = document.getElementById('historyList');
-            if (!chatHistory.length) { c.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:20px">История пуста</p>'; return; }
-            c.innerHTML = chatHistory.map(ch => `<div class="setting-item" style="cursor:pointer" onclick="loadChat(${ch.id})"><div class="setting-info"><div class="setting-name">${ch.title}</div><div class="setting-desc">${ch.model?.name||''} • ${ch.date}</div></div><button class="action-btn" onclick="event.stopPropagation();deleteChat(${ch.id})" style="padding:6px">🗑️</button></div>`).join('');
+            if (!chats.length) { c.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:20px">История пуста</p>'; return; }
+            c.innerHTML = chats.map(ch => `<div class="setting-item" style="cursor:pointer" onclick="loadChat('${ch.id}')"><div class="setting-info"><div class="setting-name">${ch.title}</div><div class="setting-desc">${ch.modelName || ch.model || ''}</div></div><button class="action-btn" onclick="event.stopPropagation();deleteChat('${ch.id}')" style="padding:6px">🗑️</button></div>`).join('');
         }
 
         function loadChat(id) {
-            const ch = chatHistory.find(c => c.id === id);
-            if (!ch) return;
-            conversationHistory = [...ch.messages];
-            if (ch.model) { currentModel = ch.model; document.getElementById('selectedModelName').textContent = currentModel.name; updateToggleStates(); updateActiveFeatures(); updateAttachButtons(); updateLogo(); }
-            document.getElementById('messages').innerHTML = '';
-            document.getElementById('welcomeScreen').classList.add('hidden');
-            document.getElementById('messagesWrapper').classList.remove('hidden');
-            document.getElementById('newChatBtn').style.display = 'flex';
-            conversationHistory.forEach(msg => {
-                const content = typeof msg.content === 'string' ? msg.content : msg.content?.find?.(p => p.type === 'text')?.text || '';
-                const extras = {};
-                const imgs = Array.isArray(msg.content) ? msg.content.filter(p => p.type === 'image_url').map(p => ({ data: p.image_url?.url })) : [];
-                if (imgs.length) extras.images = imgs;
-                addMessage(msg.role, content, extras);
-            });
-            toggleHistory();
+            // First try localStorage
+            const localChats = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+            let data = localChats.find(c => c.id === id);
+            
+            const loadChatData = (chatData) => {
+                if (!chatData) return;
+                chatId = id;
+                conversationHistory = chatData.messages || [];
+                
+                document.getElementById('messages').innerHTML = '';
+                document.getElementById('welcomeScreen').classList.add('hidden');
+                document.getElementById('messagesWrapper').classList.remove('hidden');
+                document.getElementById('newChatBtn').style.display = 'flex';
+                
+                conversationHistory.forEach(msg => {
+                    addMessage(msg.role, msg.content, {});
+                });
+                
+                // Load files for this chat
+                loadFilesForChat();
+                
+                toggleHistory();
+            };
+            
+            if (data) {
+                loadChatData(data);
+            } else if (currentUser && useCloudSync) {
+                // Try cloud
+                db.ref('users/' + currentUser.id + '/chats/' + id).once('value', snap => {
+                    loadChatData(snap.val());
+                });
+            }
         }
 
-        function deleteChat(id) { chatHistory = chatHistory.filter(c => c.id !== id); localStorage.setItem('chatHistory', JSON.stringify(chatHistory)); renderChatHistory(); }
-        function clearAllChats() { if (confirm('Удалить всю историю?')) { chatHistory = []; localStorage.removeItem('chatHistory'); renderChatHistory(); newChat(); } }
+        function deleteChat(id) {
+            if (!confirm('Удалить этот чат?')) return;
+            
+            // Delete from localStorage
+            let localChats = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+            localChats = localChats.filter(c => c.id !== id);
+            localStorage.setItem('chatHistory', JSON.stringify(localChats));
+            
+            // Delete from cloud if logged in
+            if (currentUser && useCloudSync) {
+                db.ref('users/' + currentUser.id + '/chats/' + id).remove();
+            }
+            
+            if (chatId === id) newChat();
+            loadChatHistory();
+        }
+
+        function clearAllChats() {
+            if (!confirm('Удалить всю историю?')) return;
+            
+            // Clear localStorage
+            localStorage.removeItem('chatHistory');
+            
+            // Clear cloud if logged in
+            if (currentUser && useCloudSync) {
+                db.ref('users/' + currentUser.id + '/chats').remove();
+            }
+            
+            newChat();
+            loadChatHistory();
+        }
 
         function exportChat() {
             if (!conversationHistory.length) return showToast('Нет сообщений для экспорта');
             const blob = new Blob([JSON.stringify({ model: currentModel, messages: conversationHistory, exported: new Date().toISOString() }, null, 2)], { type: 'application/json' });
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `chat-${Date.now()}.json`; a.click();
             showToast('✅ Чат экспортирован');
+        }
+
+        // ============ FILE EXPLORER FUNCTIONS ============
+        
+        function toggleFileExplorer() {
+            const explorer = document.getElementById('fileExplorer');
+            const overlay = document.getElementById('overlay');
+            const isOpen = explorer.classList.toggle('open');
+            overlay.classList.toggle('show', isOpen);
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const icons = {
+                'html': '🌐', 'htm': '🌐',
+                'css': '🎨',
+                'js': '📜', 'jsx': '⚛️', 'ts': '📘', 'tsx': '⚛️',
+                'json': '📋',
+                'py': '🐍',
+                'md': '📝',
+                'txt': '📄',
+                'png': '🖼️', 'jpg': '🖼️', 'jpeg': '🖼️', 'gif': '🖼️', 'svg': '🎭',
+                'pdf': '📕',
+                'zip': '📦', 'rar': '📦',
+                'mp3': '🎵', 'wav': '🎵',
+                'mp4': '🎬', 'webm': '🎬',
+                'sh': '⚡', 'bat': '⚡',
+                'sql': '🗃️',
+                'xml': '📰',
+                'yaml': '⚙️', 'yml': '⚙️'
+            };
+            return icons[ext] || '📄';
+        }
+
+        function addFileToExplorer(path, content) {
+            virtualFS[path] = { content, size: content.length, createdAt: Date.now() };
+            renderFileExplorer();
+            saveFilesForChat();
+        }
+
+        function removeFileFromExplorer(path) {
+            delete virtualFS[path];
+            renderFileExplorer();
+            saveFilesForChat();
+        }
+
+        function renderFileExplorer() {
+            const container = document.getElementById('fileExplorerContent');
+            const files = Object.keys(virtualFS);
+            
+            if (files.length === 0) {
+                container.innerHTML = `
+                    <div class="file-empty">
+                        <p>📂 Файлы появятся здесь</p>
+                        <p style="font-size:12px;margin-top:8px;">Попросите AI создать файл</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Group by folders
+            const tree = {};
+            files.forEach(path => {
+                const parts = path.split('/');
+                if (parts.length === 1) {
+                    tree[path] = virtualFS[path];
+                } else {
+                    const folder = parts[0];
+                    if (!tree[folder]) tree[folder] = { _isFolder: true, children: {} };
+                    tree[folder].children[parts.slice(1).join('/')] = virtualFS[path];
+                }
+            });
+            
+            let html = '';
+            for (const [name, data] of Object.entries(tree)) {
+                if (data._isFolder) {
+                    html += `
+                        <div class="file-tree-folder">
+                            <div class="file-tree-item" onclick="toggleFolder(this)">
+                                <span class="file-tree-icon">📁</span>
+                                <span class="file-tree-name">${escapeHtml(name)}</span>
+                            </div>
+                            <div class="file-tree-children">
+                                ${Object.entries(data.children).map(([childName, childData]) => `
+                                    <div class="file-tree-item" onclick="previewFile('${name}/${childName}')">
+                                        <span class="file-tree-icon">${getFileIcon(childName)}</span>
+                                        <span class="file-tree-name">${escapeHtml(childName)}</span>
+                                        <span class="file-tree-size">${formatFileSize(childData.size)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="file-tree-item" onclick="previewFile('${name}')">
+                            <span class="file-tree-icon">${getFileIcon(name)}</span>
+                            <span class="file-tree-name">${escapeHtml(name)}</span>
+                            <span class="file-tree-size">${formatFileSize(data.size)}</span>
+                        </div>
+                    `;
+                }
+            }
+            
+            container.innerHTML = html;
+        }
+
+        function toggleFolder(el) {
+            el.parentElement.classList.toggle('collapsed');
+        }
+
+        function previewFile(path) {
+            const file = virtualFS[path];
+            if (!file) return;
+            
+            currentPreviewFile = path;
+            document.getElementById('filePreviewTitle').innerHTML = `${getFileIcon(path)} ${path}`;
+            document.getElementById('filePreviewBody').textContent = file.content;
+            document.getElementById('filePreviewModal').classList.add('show');
+        }
+
+        function closeFilePreview(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('filePreviewModal').classList.remove('show');
+            }
+        }
+
+        function copyFileContent() {
+            if (!currentPreviewFile || !virtualFS[currentPreviewFile]) return;
+            copyToClipboard(virtualFS[currentPreviewFile].content);
+            showToast('✅ Содержимое скопировано');
+        }
+
+        function downloadCurrentFile() {
+            if (!currentPreviewFile || !virtualFS[currentPreviewFile]) return;
+            const file = virtualFS[currentPreviewFile];
+            const blob = new Blob([file.content], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = currentPreviewFile.split('/').pop();
+            a.click();
+            showToast('✅ Файл скачан');
+        }
+
+        function createNewFile() {
+            const name = prompt('Имя файла:', 'new_file.txt');
+            if (!name) return;
+            addFileToExplorer(name, '');
+            showToast('✅ Файл создан');
+        }
+
+        function createNewFolder() {
+            const name = prompt('Имя папки:', 'new_folder');
+            if (!name) return;
+            addFileToExplorer(name + '/.keep', '');
+            showToast('✅ Папка создана');
+        }
+
+        function saveFilesForChat() {
+            if (chatId) {
+                // Save to localStorage
+                let allFiles = JSON.parse(localStorage.getItem('chatFiles') || '{}');
+                allFiles[chatId] = virtualFS;
+                localStorage.setItem('chatFiles', JSON.stringify(allFiles));
+                
+                // Save to cloud if logged in
+                if (currentUser && useCloudSync) {
+                    db.ref('users/' + currentUser.id + '/files/' + chatId).set(virtualFS);
+                }
+            }
+        }
+
+        function loadFilesForChat() {
+            if (chatId) {
+                // Load from localStorage first
+                const allFiles = JSON.parse(localStorage.getItem('chatFiles') || '{}');
+                virtualFS = allFiles[chatId] || {};
+                renderFileExplorer();
+                
+                // Merge from cloud if logged in
+                if (currentUser && useCloudSync) {
+                    db.ref('users/' + currentUser.id + '/files/' + chatId).once('value', snap => {
+                        const cloudFiles = snap.val() || {};
+                        virtualFS = { ...virtualFS, ...cloudFiles };
+                        renderFileExplorer();
+                    });
+                }
+            }
+        }
+
+        // Hook into file operations from AI response
+        function processFileOperations(text) {
+            const ops = parseFileOperations(text);
+            ops.forEach(op => {
+                if (op.type === 'CREATE' || op.type === 'APPEND') {
+                    addFileToExplorer(op.path, op.content);
+                } else if (op.type === 'DELETE') {
+                    removeFileFromExplorer(op.path);
+                } else if (op.type === 'EDIT' && virtualFS[op.path]) {
+                    // Simple edit - just show the new content
+                    addFileToExplorer(op.path, op.content);
+                }
+            });
         }
     </script>
 </body>
