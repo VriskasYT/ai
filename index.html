@@ -1945,12 +1945,18 @@
 
         const CODE_MODE_PROMPT = `ТЫ - ОПЫТНЫЙ ПРОГРАММИСТ. СТРОГО СЛЕДУЙ ПРАВИЛАМ!
 
+## КРИТИЧЕСКИ ВАЖНО:
+- ВСЕГДА закрывай теги! Каждый <create_file> ДОЛЖЕН иметь </create_file>
+- ВСЕГДА закрывай <thinking> тегом </thinking>
+- Пиши весь код БЕЗ ПРОПУСКОВ
+
 ## ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
 1. ВСЕГДА используй XML теги для ЛЮБЫХ файловых операций
 2. ПИШИ ПОЛНЫЙ КОД - НИКОГДА не сокращай, не пропускай, не пиши "..." или "остальной код"
 3. ВСЁ В ОДНОМ HTML ФАЙЛЕ - CSS и JavaScript внутри HTML
 4. Проверяй синтаксис перед отправкой
 5. Пиши аккуратно, не пропускай буквы и символы
+6. ОБЯЗАТЕЛЬНО ЗАКРЫВАЙ ВСЕ ТЕГИ!
 
 ## FILE OPERATION TAGS (MANDATORY)
 
@@ -2617,15 +2623,28 @@ Open snake.html in browser to play!`;
         }
         
         function parseThinkingFromText(text) {
-            const thinkRe = /<thinking>([\s\S]*?)<\/thinking>/gi;
             let thinking = '';
+            // Parse complete thinking blocks
+            const thinkRe = /<thinking>([\s\S]*?)<\/thinking>/gi;
             let m;
             while ((m = thinkRe.exec(text)) !== null) thinking += m[1].trim() + '\n';
+            
+            // Parse incomplete thinking block (during streaming)
+            const incompleteRe = /<thinking>([\s\S]*)$/gi;
+            const incompleteMatch = incompleteRe.exec(text);
+            if (incompleteMatch && !text.includes('</thinking>')) {
+                thinking += incompleteMatch[1].trim();
+            }
+            
             return thinking.trim();
         }
         
         function removeThinkingTags(text) {
-            return text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+            // Remove complete thinking blocks
+            let result = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+            // Remove incomplete thinking blocks (during streaming)
+            result = result.replace(/<thinking>[\s\S]*$/gi, '');
+            return result.trim();
         }
         
         function isThinkingComplete(text) {
@@ -2908,22 +2927,37 @@ Open snake.html in browser to play!`;
             loadEl.className = 'message assistant';
             loadEl.innerHTML = `<div class="message-avatar">${getModelAvatar(currentModel.id)}</div><div class="message-body"><div class="message-header"><span class="message-author">${currentModel.name}</span></div><div class="message-content"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div><p>🎨 Генерирую изображение...</p></div></div>`;
             msgsEl.appendChild(loadEl);
+            if (document.getElementById('autoScrollToggle').checked) msgsEl.scrollTop = msgsEl.scrollHeight;
 
             try {
-                const url = `${API_BASE}/image/${encodeURIComponent(prompt)}?model=${currentModel.id}&nologo=true&seed=${Date.now()}`;
-                const genTime = ((Date.now() - generationStartTime) / 1000).toFixed(1) + 's';
+                // Формируем URL для API pollinations
+                const imageUrl = `${API_BASE}/image/${encodeURIComponent(prompt)}?model=${currentModel.id}&nologo=true&width=1024&height=1024&seed=${Date.now()}`;
+                
+                // Создаём картинку и ждём загрузки
                 const img = new Image();
-                img.onload = () => {
-                    loadEl.remove();
-                    addMessage('assistant', `🎨 **Изображение готово!**\n\nМодель: *${currentModel.name}*\nПромпт: "${prompt}"`, { genTime });
-                    const lastC = document.querySelector('.message.assistant:last-child .message-content');
-                    if (lastC) lastC.innerHTML += `<img src="${url}" class="generated-image" onclick="openImageModal('${url}')">`;
-                    conversationHistory.push({ role: 'assistant', content: `[Изображение: ${prompt}]` });
-                    isGenerating = false; updateSendButton(); saveChat();
-                };
-                img.onerror = () => { loadEl.remove(); addMessage('assistant', '❌ Ошибка генерации изображения'); isGenerating = false; updateSendButton(); };
-                img.src = url;
-            } catch (e) { loadEl.remove(); addMessage('assistant', `❌ ${e.message}`); isGenerating = false; updateSendButton(); }
+                img.crossOrigin = 'anonymous';
+                
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = () => reject(new Error('Не удалось загрузить изображение'));
+                    // Таймаут 60 секунд
+                    setTimeout(() => reject(new Error('Таймаут загрузки изображения')), 60000);
+                    img.src = imageUrl;
+                });
+                
+                const genTime = ((Date.now() - generationStartTime) / 1000).toFixed(1) + 's';
+                loadEl.remove();
+                addMessage('assistant', `🎨 **Изображение готово!**\n\nМодель: *${currentModel.name}*\nПромпт: "${prompt}"`, { genTime });
+                const lastC = document.querySelector('.message.assistant:last-child .message-content');
+                if (lastC) lastC.innerHTML += `<img src="${imageUrl}" class="generated-image" onclick="openImageModal('${imageUrl}')">`;
+                conversationHistory.push({ role: 'assistant', content: `[Изображение: ${prompt}]` });
+                isGenerating = false; updateSendButton(); saveChat();
+            } catch (e) { 
+                loadEl.remove(); 
+                addMessage('assistant', `❌ Ошибка генерации изображения: ${e.message}\n\nПопробуйте другую модель (например Flux Schnell)`); 
+                isGenerating = false; 
+                updateSendButton(); 
+            }
         }
 
         async function generateResponse() {
@@ -2954,33 +2988,34 @@ Open snake.html in browser to play!`;
 
                 if (codeOn) {
                     sysPrompt = CODE_MODE_PROMPT + (sysPrompt ? '\n\n' + sysPrompt : '');
-                    // Добавляем напоминание в последнее сообщение пользователя
-                    const lastUserMsgIdx = messages.length - 1;
-                    if (messages[lastUserMsgIdx] && messages[lastUserMsgIdx].role === 'user') {
-                        const content = messages[lastUserMsgIdx].content;
-                        if (typeof content === 'string') {
-                            messages[lastUserMsgIdx].content = content + '\n\n[НАПОМИНАНИЕ: Используй <create_file path="..."> для создания файлов. Пиши ВЕСЬ код полностью!]';
-                        }
-                    }
                 }
                 
                 if (reasonOn) {
                     const reasoningInstruction = `
 
-ВАЖНО: Ты должен показать свой процесс размышления. Используй следующий формат:
+ВАЖНО: Покажи процесс размышления. Формат:
 
 <thinking>
-Здесь напиши свои пошаговые рассуждения, анализ задачи, возможные подходы к решению.
-Это твой внутренний монолог, где ты думаешь над задачей.
+Твои пошаговые рассуждения здесь.
 </thinking>
 
-После блока thinking дай свой финальный ответ пользователю.`;
+КРИТИЧЕСКИ ВАЖНО: ОБЯЗАТЕЛЬНО закрой тег </thinking> перед тем как давать ответ!
+После закрытия </thinking> дай финальный ответ.`;
                     sysPrompt = (sysPrompt || '') + reasoningInstruction;
                 }
 
                 const messages = [];
                 if (sysPrompt) messages.push({ role: 'system', content: sysPrompt });
-                messages.push(...conversationHistory);
+                
+                // Clone conversation history and add reminder for code mode
+                const historyClone = JSON.parse(JSON.stringify(conversationHistory));
+                if (codeOn && historyClone.length > 0) {
+                    const lastMsg = historyClone[historyClone.length - 1];
+                    if (lastMsg.role === 'user' && typeof lastMsg.content === 'string') {
+                        lastMsg.content += '\n\n[НАПОМИНАНИЕ: Используй <create_file path="..."> для создания файлов. ОБЯЗАТЕЛЬНО закрой тег </create_file>. Пиши ВЕСЬ код полностью!]';
+                    }
+                }
+                messages.push(...historyClone);
 
                 const body = {
                     model: currentModel.id,
@@ -3035,8 +3070,12 @@ Open snake.html in browser to play!`;
                                         let displayHtml = '';
                                         
                                         if (combinedThinking) {
-                                            // Thinking block - collapsed by default, content visible only during streaming
-                                            displayHtml += `<div class="thinking-block"><div class="thinking-header collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('visible')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Думаю...</div><div class="thinking-content">${formatContent(combinedThinking)}</div></div>`;
+                                            // Check if thinking is complete
+                                            const isComplete = isThinkingComplete(fullText);
+                                            const headerClass = isComplete ? 'thinking-header collapsed' : 'thinking-header';
+                                            const contentClass = isComplete ? 'thinking-content' : 'thinking-content visible';
+                                            const headerText = isComplete ? '🧠 Размышления' : '🧠 Думаю...';
+                                            displayHtml += `<div class="thinking-block"><div class="${headerClass}" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('visible')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>${headerText}</div><div class="${contentClass}">${formatContent(combinedThinking)}</div></div>`;
                                         }
                                         
                                         if (searchOn) {
