@@ -1075,19 +1075,7 @@
 
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
-        /* Particle effect on send */
-        .particle {
-            position: fixed;
-            pointer-events: none;
-            font-size: 16px;
-            z-index: 1000;
-            animation: particleFly 1s ease-out forwards;
-        }
-
-        @keyframes particleFly {
-            0% { opacity: 1; transform: translate(0, 0) scale(1); }
-            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0); }
-        }
+        /* Particles removed */
 
         /* Typing cursor animation */
         .typing-cursor {
@@ -1283,6 +1271,29 @@
             .suggestions { grid-template-columns: 1fr; }
             .side-panel { max-width: 100%; }
             .scroll-bottom-btn { bottom: 120px; right: 12px; }
+            .file-explorer { width: 100%; left: -100%; }
+            .file-preview-content { min-width: 90vw; }
+            .welcome-title { font-size: clamp(24px, 7vw, 36px); }
+            .welcome-subtitle { font-size: 14px; }
+            .suggestion { padding: 12px 14px; }
+            .suggestion-icon { font-size: 18px; }
+        }
+
+        @media (max-width: 480px) {
+            .header { padding: 6px 10px; gap: 4px; }
+            .icon-btn { width: 36px; height: 36px; }
+            .model-btn { max-width: 120px; padding: 6px 10px; font-size: 13px; }
+            .messages { padding: 8px; }
+            .message { padding: 12px 0; gap: 8px; }
+            .message-avatar { width: 28px; height: 28px; font-size: 12px; }
+            .message-content { font-size: 14px; }
+            .input-wrapper { padding: 6px 6px 6px 12px; }
+            .input-wrapper textarea { font-size: 15px; }
+            .send-btn { width: 36px; height: 36px; }
+            .attach-btn { width: 32px; height: 32px; }
+            .welcome-logo { width: 60px; height: 60px; }
+            .panel-content { padding: 12px; }
+            .setting-item { padding: 10px 0; }
         }
     </style>
 </head>
@@ -1729,6 +1740,7 @@
             migrateLocalChatsToCloud();
             
             updateAuthUI();
+            updateWelcomeGreeting();
             showToast('✅ Вы вошли как ' + user.first_name);
         }
         
@@ -1887,6 +1899,7 @@ Open snake.html in browser to play!`;
             updateAttachButtons();
             updateLogo();
             loadChatHistory();
+            updateWelcomeGreeting();
             
             document.getElementById('messageInput').addEventListener('input', function() {
                 document.getElementById('sendBtn').disabled = !this.value.trim() && !attachedImages.length && !attachedFiles.length;
@@ -2613,20 +2626,27 @@ Open snake.html in browser to play!`;
         function closeImageModal() { document.getElementById('imageModal').classList.remove('show'); }
         function showToast(msg, dur = 3000) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), dur); }
 
-        function createParticles(x, y) {
-            const particles = ['✨', '⭐', '💫', '🌟', '✦'];
-            for (let i = 0; i < 8; i++) {
-                const particle = document.createElement('span');
-                particle.className = 'particle';
-                particle.textContent = particles[Math.floor(Math.random() * particles.length)];
-                particle.style.left = x + 'px';
-                particle.style.top = y + 'px';
-                const angle = (Math.PI * 2 * i) / 8;
-                const distance = 50 + Math.random() * 30;
-                particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
-                particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
-                document.body.appendChild(particle);
-                setTimeout(() => particle.remove(), 1000);
+        // Particles removed
+
+        function updateWelcomeGreeting() {
+            const titleEl = document.querySelector('.welcome-title');
+            if (!titleEl) return;
+            
+            if (currentUser && currentUser.first_name) {
+                const hour = new Date().getHours();
+                let greeting;
+                if (hour >= 6 && hour < 12) {
+                    greeting = `Доброе утро, ${currentUser.first_name}! ☀️`;
+                } else if (hour >= 12 && hour < 18) {
+                    greeting = `Добрый день, ${currentUser.first_name}! 🌤️`;
+                } else if (hour >= 18 && hour < 22) {
+                    greeting = `Добрый вечер, ${currentUser.first_name}! 🌅`;
+                } else {
+                    greeting = `Доброй ночи, ${currentUser.first_name}! 🌙`;
+                }
+                titleEl.textContent = greeting;
+            } else {
+                titleEl.textContent = 'Привет!';
             }
         }
 
@@ -2635,10 +2655,7 @@ Open snake.html in browser to play!`;
             const message = input.value.trim();
             if (!message && !attachedImages.length && !attachedFiles.length || isGenerating) return;
             
-            // Particle effect on send button
-            const sendBtn = document.getElementById('sendBtn');
-            const rect = sendBtn.getBoundingClientRect();
-            createParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            // Message sent
 
             const welcomeScreen = document.getElementById('welcomeScreen');
             const messagesWrapper = document.getElementById('messagesWrapper');
