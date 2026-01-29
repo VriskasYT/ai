@@ -644,7 +644,7 @@
             letter-spacing: 0.5px;
         }
 
-        .file-op-content { border-top: 1px solid rgba(66, 165, 245, 0.3); display: none; /* Hidden by default */ }
+        .file-op-content { border-top: 1px solid rgba(66, 165, 245, 0.3); display: none; }
         .dark-theme .file-op-content { background: rgba(0,0,0,0.2); }
         .file-op-content.visible { display: block; }
         .file-op-content.hidden { display: none; }
@@ -779,7 +779,7 @@
             color: var(--text-secondary);
             line-height: 1.7;
             background: rgba(0,0,0,0.02);
-            display: none; /* Hidden by default - shown on click */
+            display: none;
         }
 
         .thinking-content.visible { display: block; }
@@ -1121,6 +1121,37 @@
             background: var(--accent);
             margin-left: 2px;
             animation: cursorBlink 1s infinite;
+        }
+
+        /* Gradient text animation for loading */
+        .gradient-loading {
+            background: linear-gradient(90deg, var(--accent), #ea4335, #fbbc04, #34a853, var(--accent));
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientMove 2s linear infinite;
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
+        /* Shine effect on completed file ops */
+        .file-op-block:not(.file-op-pending):not(.file-op-stopped):not(.file-op-failed) .file-op-header {
+            background: linear-gradient(90deg, rgba(66, 165, 245, 0.1) 0%, rgba(52, 168, 83, 0.15) 50%, rgba(66, 165, 245, 0.1) 100%);
+        }
+
+        /* Smooth scroll behavior */
+        .messages {
+            scroll-behavior: smooth;
+        }
+
+        /* Better focus states */
+        button:focus-visible, input:focus-visible, textarea:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
         }
 
         @keyframes cursorBlink {
@@ -1536,18 +1567,8 @@
                     <button class="action-btn" onclick="exportChat()">📥 Скачать</button>
                 </div>
                 <div class="setting-item">
-                    <div class="setting-info"><div class="setting-name">Копировать весь чат</div></div>
-                    <button class="action-btn" onclick="copyAllChat()">📋 Копировать</button>
-                </div>
-                <div class="setting-item">
                     <div class="setting-info"><div class="setting-name">Очистить историю</div></div>
                     <button class="action-btn" onclick="clearAllChats()" style="background:#fce8e6;color:#c5221f;">🗑️ Удалить</button>
-                </div>
-                <div class="setting-item" id="chatStatsItem" style="display:none;">
-                    <div class="setting-info">
-                        <div class="setting-name">📊 Статистика чата</div>
-                        <div class="setting-desc" id="chatStatsText">0 сообщений</div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -1654,7 +1675,7 @@
                 <div class="input-wrapper">
                     <textarea id="messageInput" placeholder="Напишите сообщение..." rows="1" onkeydown="handleKeydown(event)" oninput="autoResize(this);updateCharCount()"></textarea>
                     <div class="input-actions">
-                        <!-- voice button removed -->
+                        <!-- Voice button removed -->
                         <button class="attach-btn" id="imageAttachBtn" onclick="document.getElementById('imageInput').click()" title="Прикрепить изображение">
                             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
                         </button>
@@ -1671,7 +1692,7 @@
                 </div>
                 <div class="input-footer">
                     <div class="active-features" id="activeFeatures"></div>
-                    <div class="shortcuts-hint" style="font-size:10px;color:var(--text-tertiary);" id="shortcutsHint">Ctrl+K новый чат • Ctrl+, настройки • Ctrl+E файлы</div>
+                    <div class="shortcuts-hint" style="font-size:10px;color:var(--text-tertiary);display:none;" id="shortcutsHint">Ctrl+K новый • Ctrl+, настройки • Ctrl+E файлы</div>
                     <div class="char-count" id="charCount">0 / 32000</div>
                 </div>
             </div>
@@ -1837,8 +1858,9 @@
         // Telegram auth callback
         function onTelegramAuth(user) {
             currentUser = user;
+            currentUser.photoUrl = user.photo_url || '';
             useCloudSync = true;
-            localStorage.setItem('telegramUser', JSON.stringify(user));
+            localStorage.setItem('telegramUser', JSON.stringify(currentUser));
             
             // Save user to Firebase
             db.ref('users/' + user.id).set({
@@ -2186,10 +2208,10 @@ Open snake.html in browser to play!`;
         }
 
         function updateAttachButtons() {
-            const visionCapable = currentModel.caps?.includes('vision') || currentModel.type !== 'text';
+            const modelSupportsVision = currentModel.caps?.includes('vision') || currentModel.type !== 'text';
             const visionEnabled = document.getElementById('visionToggle').checked;
             // Hide image button if model doesn't support vision OR if vision is disabled in settings
-            const showImageBtn = visionCapable && (currentModel.type !== 'text' || visionEnabled || !document.getElementById('visionToggle').disabled);
+            const showImageBtn = modelSupportsVision && (visionEnabled || document.getElementById('visionToggle').disabled);
             document.getElementById('imageAttachBtn').classList.toggle('hidden', !showImageBtn);
         }
 
@@ -2682,15 +2704,17 @@ Open snake.html in browser to play!`;
                 const langLabel = ext.toUpperCase() || 'FILE';
                 const codeId = `file-op-code-${Date.now()}-${idx}`;
                 
+                // Content is hidden by default - user can click to expand
                 return `
                 <div class="file-op-block">
-                    <div class="file-op-header collapsed" onclick="this.classList.toggle('collapsed');var content=this.nextElementSibling;content.style.display=content.style.display==='block'?'none':'block';">
+                    <div class="file-op-header collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('visible')">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                         <span class="file-op-icon" style="font-family:'Google Sans Mono',monospace;font-weight:600;">${op.icon}</span>
                         <span class="file-op-path">${escapeHtml(op.path)}</span>
                         <span class="file-op-type">${op.type}</span>
+                        <span style="margin-left:8px;color:var(--success);font-size:12px;">✓</span>
                     </div>
-                    <div class="file-op-content" style="display:none;">
+                    <div class="file-op-content">
                         ${op.content ? `
                             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:#2d2d2d;border-bottom:1px solid #404040;">
                                 <span style="color:#888;font-size:12px;font-weight:500;">${langLabel}</span>
@@ -2717,34 +2741,36 @@ Open snake.html in browser to play!`;
             const msgEl = document.createElement('div');
             msgEl.className = `message ${role}`;
             const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-            const author = role === 'user' ? 'Вы' : currentModel.name;
-            const avatar = role === 'user' ? 'Я' : getModelAvatar(currentModel.id);
+            const author = role === 'user' ? (currentUser ? currentUser.first_name : 'Вы') : currentModel.name;
+            
+            // User avatar - use Telegram photo if available
+            let userAvatar;
+            if (role === 'user') {
+                if (currentUser && currentUser.photo_url) {
+                    userAvatar = `<img src="${currentUser.photo_url}" alt="${currentUser.first_name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                } else if (currentUser && currentUser.first_name) {
+                    userAvatar = currentUser.first_name.charAt(0).toUpperCase();
+                } else {
+                    userAvatar = 'Я';
+                }
+            }
+            const avatar = role === 'user' ? userAvatar : getModelAvatar(currentModel.id);
 
             let extrasHtml = '';
             if (extras.images?.length) extrasHtml += '<div class="message-attachments">' + extras.images.map(img => `<img src="${img.data}" class="message-attachment-img" onclick="openImageModal('${img.data}')">`).join('') + '</div>';
             if (extras.files?.length) extrasHtml += '<div class="message-attachments">' + extras.files.map(f => `<div class="message-attachment-file">📄 ${f.name}</div>`).join('') + '</div>';
             
             if (extras.thinking) {
-                // Always start collapsed - user can click to expand
-                extrasHtml += `<div class="thinking-block"><div class="thinking-header collapsed" onclick="this.classList.toggle('collapsed');var content=this.nextElementSibling;content.style.display=content.style.display==='block'?'none':'block';"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления модели</div><div class="thinking-content" style="display:none;">${formatContent(extras.thinking)}</div></div>`;
+                // Always start collapsed - user can expand if interested
+                extrasHtml += `<div class="thinking-block"><div class="thinking-header collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('visible')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления модели</div><div class="thinking-content">${formatContent(extras.thinking)}</div></div>`;
             }
             if (extras.searchOn) extrasHtml += renderSearchSources(extras.searchSources || [], extras.searchOn);
             if (extras.fileOps?.length) extrasHtml += renderFileOps(extras.fileOps);
 
             let genTimeHtml = extras.genTime ? `<span class="message-gen-time">${extras.genTime}</span>` : '';
 
-            // User avatar from Telegram or default
-            let userAvatarHtml = 'Я';
-            if (role === 'user' && currentUser) {
-                if (currentUser.photo_url) {
-                    userAvatarHtml = `<img src="${currentUser.photo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.outerHTML='${(currentUser.first_name || 'Я').charAt(0).toUpperCase()}'">`;
-                } else {
-                    userAvatarHtml = (currentUser.first_name || 'Я').charAt(0).toUpperCase();
-                }
-            }
-            
             msgEl.innerHTML = `
-                <div class="message-avatar">${role === 'user' ? userAvatarHtml : avatar}</div>
+                <div class="message-avatar">${avatar}</div>
                 <div class="message-body">
                     <div class="message-header"><span class="message-author">${author}</span><span class="message-time">${time}</span>${genTimeHtml}</div>
                     <div class="message-content">${extrasHtml}${formatContent(content)}</div>
@@ -2978,8 +3004,8 @@ Open snake.html in browser to play!`;
                                         let displayHtml = '';
                                         
                                         if (combinedThinking) {
-                                            // Show thinking collapsed by default during streaming
-                                            displayHtml += `<div class="thinking-block"><div class="thinking-header collapsed" onclick="this.classList.toggle('collapsed');var content=this.nextElementSibling;content.style.display=content.style.display==='block'?'none':'block';"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления...</div><div class="thinking-content" style="display:none;">${formatContent(combinedThinking)}</div></div>`;
+                                            // Thinking block - collapsed by default, content visible only during streaming
+                                            displayHtml += `<div class="thinking-block"><div class="thinking-header collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('visible')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Думаю...</div><div class="thinking-content">${formatContent(combinedThinking)}</div></div>`;
                                         }
                                         
                                         if (searchOn) {
@@ -3008,7 +3034,7 @@ Open snake.html in browser to play!`;
                                         if (cleanText.trim()) {
                                             displayHtml += formatContent(cleanText);
                                         } else if (!fileOps.length && !pendingOps.length && !combinedThinking) {
-                                            displayHtml += '<span style="opacity:0.5">✨ Генерирую...</span>';
+                                            displayHtml += '<span class="gradient-loading">✨ Генерирую ответ...</span>';
                                         }
                                         
                                         contentEl.innerHTML = displayHtml;
@@ -3065,7 +3091,6 @@ Open snake.html in browser to play!`;
                 }
 
                 saveChat();
-                updateChatStats();
             } catch (e) {
                 typingEl.remove();
                 if (e.name === 'AbortError') {
@@ -3244,34 +3269,6 @@ Open snake.html in browser to play!`;
             const blob = new Blob([JSON.stringify({ model: currentModel, messages: conversationHistory, exported: new Date().toISOString() }, null, 2)], { type: 'application/json' });
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `chat-${Date.now()}.json`; a.click();
             showToast('✅ Чат экспортирован');
-        }
-        
-        function copyAllChat() {
-            if (!conversationHistory.length) return showToast('Нет сообщений для копирования');
-            let text = conversationHistory.map(m => {
-                const role = m.role === 'user' ? 'Вы' : currentModel.name;
-                const content = typeof m.content === 'string' ? m.content : m.content?.find?.(p => p?.type === 'text')?.text || '';
-                return `${role}:\n${content}`;
-            }).join('\n\n---\n\n');
-            copyToClipboard(text);
-            showToast('✅ Чат скопирован');
-        }
-        
-        function updateChatStats() {
-            const statsItem = document.getElementById('chatStatsItem');
-            const statsText = document.getElementById('chatStatsText');
-            if (conversationHistory.length > 0) {
-                statsItem.style.display = 'flex';
-                const userMsgs = conversationHistory.filter(m => m.role === 'user').length;
-                const aiMsgs = conversationHistory.filter(m => m.role === 'assistant').length;
-                const totalChars = conversationHistory.reduce((sum, m) => {
-                    const c = typeof m.content === 'string' ? m.content : m.content?.find?.(p => p?.type === 'text')?.text || '';
-                    return sum + c.length;
-                }, 0);
-                statsText.textContent = `${userMsgs} ваших • ${aiMsgs} AI • ~${Math.round(totalChars/4)} токенов`;
-            } else {
-                statsItem.style.display = 'none';
-            }
         }
 
         // ============ FILE EXPLORER FUNCTIONS ============
