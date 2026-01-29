@@ -644,8 +644,9 @@
             letter-spacing: 0.5px;
         }
 
-        .file-op-content { border-top: 1px solid rgba(66, 165, 245, 0.3); }
+        .file-op-content { border-top: 1px solid rgba(66, 165, 245, 0.3); display: none; /* Hidden by default */ }
         .dark-theme .file-op-content { background: rgba(0,0,0,0.2); }
+        .file-op-content.visible { display: block; }
         .file-op-content.hidden { display: none; }
 
         .file-op-code {
@@ -778,8 +779,10 @@
             color: var(--text-secondary);
             line-height: 1.7;
             background: rgba(0,0,0,0.02);
+            display: none; /* Hidden by default - shown on click */
         }
 
+        .thinking-content.visible { display: block; }
         .thinking-content.hidden { display: none; }
 
         /* Search Block */
@@ -1488,7 +1491,7 @@
                 <div class="setting-item">
                     <div class="setting-info"><div class="setting-name">👁️ Vision (анализ фото)</div></div>
                     <span class="setting-status" id="visionStatus">Недоступно</span>
-                    <label class="toggle"><input type="checkbox" id="visionToggle" onchange="updateActiveFeatures()"><span class="toggle-slider"></span></label>
+                    <label class="toggle"><input type="checkbox" id="visionToggle" onchange="updateActiveFeatures();updateAttachButtons()"><span class="toggle-slider"></span></label>
                 </div>
 
                 <div class="slider-container">
@@ -1533,8 +1536,18 @@
                     <button class="action-btn" onclick="exportChat()">📥 Скачать</button>
                 </div>
                 <div class="setting-item">
+                    <div class="setting-info"><div class="setting-name">Копировать весь чат</div></div>
+                    <button class="action-btn" onclick="copyAllChat()">📋 Копировать</button>
+                </div>
+                <div class="setting-item">
                     <div class="setting-info"><div class="setting-name">Очистить историю</div></div>
                     <button class="action-btn" onclick="clearAllChats()" style="background:#fce8e6;color:#c5221f;">🗑️ Удалить</button>
+                </div>
+                <div class="setting-item" id="chatStatsItem" style="display:none;">
+                    <div class="setting-info">
+                        <div class="setting-name">📊 Статистика чата</div>
+                        <div class="setting-desc" id="chatStatsText">0 сообщений</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1641,9 +1654,7 @@
                 <div class="input-wrapper">
                     <textarea id="messageInput" placeholder="Напишите сообщение..." rows="1" onkeydown="handleKeydown(event)" oninput="autoResize(this);updateCharCount()"></textarea>
                     <div class="input-actions">
-                        <button class="attach-btn" id="voiceBtn" onclick="toggleVoiceInput()" title="Голосовой ввод">
-                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-                        </button>
+                        <!-- voice button removed -->
                         <button class="attach-btn" id="imageAttachBtn" onclick="document.getElementById('imageInput').click()" title="Прикрепить изображение">
                             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
                         </button>
@@ -1660,7 +1671,7 @@
                 </div>
                 <div class="input-footer">
                     <div class="active-features" id="activeFeatures"></div>
-                    <div class="shortcuts-hint" style="font-size:10px;color:var(--text-tertiary);display:none;" id="shortcutsHint">Ctrl+K новый • Ctrl+, настройки • Ctrl+E файлы</div>
+                    <div class="shortcuts-hint" style="font-size:10px;color:var(--text-tertiary);" id="shortcutsHint">Ctrl+K новый чат • Ctrl+, настройки • Ctrl+E файлы</div>
                     <div class="char-count" id="charCount">0 / 32000</div>
                 </div>
             </div>
@@ -2175,8 +2186,11 @@ Open snake.html in browser to play!`;
         }
 
         function updateAttachButtons() {
-            const v = currentModel.caps?.includes('vision') || currentModel.type !== 'text';
-            document.getElementById('imageAttachBtn').classList.toggle('hidden', !v);
+            const visionCapable = currentModel.caps?.includes('vision') || currentModel.type !== 'text';
+            const visionEnabled = document.getElementById('visionToggle').checked;
+            // Hide image button if model doesn't support vision OR if vision is disabled in settings
+            const showImageBtn = visionCapable && (currentModel.type !== 'text' || visionEnabled || !document.getElementById('visionToggle').disabled);
+            document.getElementById('imageAttachBtn').classList.toggle('hidden', !showImageBtn);
         }
 
         function updateActiveFeatures() {
@@ -2670,13 +2684,13 @@ Open snake.html in browser to play!`;
                 
                 return `
                 <div class="file-op-block">
-                    <div class="file-op-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')">
+                    <div class="file-op-header collapsed" onclick="this.classList.toggle('collapsed');var content=this.nextElementSibling;content.style.display=content.style.display==='block'?'none':'block';">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                         <span class="file-op-icon" style="font-family:'Google Sans Mono',monospace;font-weight:600;">${op.icon}</span>
                         <span class="file-op-path">${escapeHtml(op.path)}</span>
                         <span class="file-op-type">${op.type}</span>
                     </div>
-                    <div class="file-op-content">
+                    <div class="file-op-content" style="display:none;">
                         ${op.content ? `
                             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:#2d2d2d;border-bottom:1px solid #404040;">
                                 <span style="color:#888;font-size:12px;font-weight:500;">${langLabel}</span>
@@ -2684,7 +2698,7 @@ Open snake.html in browser to play!`;
                             </div>
                             <div class="file-op-code" id="${codeId}">${escapeHtml(op.content)}</div>
                         ` : ''}
-                        <div class="file-op-status">[OK] ${op.status}</div>
+                        <div class="file-op-status">✅ ${op.status}</div>
                     </div>
                 </div>
             `}).join('');
@@ -2711,17 +2725,26 @@ Open snake.html in browser to play!`;
             if (extras.files?.length) extrasHtml += '<div class="message-attachments">' + extras.files.map(f => `<div class="message-attachment-file">📄 ${f.name}</div>`).join('') + '</div>';
             
             if (extras.thinking) {
-                const coll = extras.thinkingComplete ? 'collapsed' : '';
-                const hid = extras.thinkingComplete ? 'hidden' : '';
-                extrasHtml += `<div class="thinking-block"><div class="thinking-header ${coll}" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления модели</div><div class="thinking-content ${hid}">${formatContent(extras.thinking)}</div></div>`;
+                // Always start collapsed - user can click to expand
+                extrasHtml += `<div class="thinking-block"><div class="thinking-header collapsed" onclick="this.classList.toggle('collapsed');var content=this.nextElementSibling;content.style.display=content.style.display==='block'?'none':'block';"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления модели</div><div class="thinking-content" style="display:none;">${formatContent(extras.thinking)}</div></div>`;
             }
             if (extras.searchOn) extrasHtml += renderSearchSources(extras.searchSources || [], extras.searchOn);
             if (extras.fileOps?.length) extrasHtml += renderFileOps(extras.fileOps);
 
             let genTimeHtml = extras.genTime ? `<span class="message-gen-time">${extras.genTime}</span>` : '';
 
+            // User avatar from Telegram or default
+            let userAvatarHtml = 'Я';
+            if (role === 'user' && currentUser) {
+                if (currentUser.photo_url) {
+                    userAvatarHtml = `<img src="${currentUser.photo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.outerHTML='${(currentUser.first_name || 'Я').charAt(0).toUpperCase()}'">`;
+                } else {
+                    userAvatarHtml = (currentUser.first_name || 'Я').charAt(0).toUpperCase();
+                }
+            }
+            
             msgEl.innerHTML = `
-                <div class="message-avatar">${role === 'user' ? 'Я' : avatar}</div>
+                <div class="message-avatar">${role === 'user' ? userAvatarHtml : avatar}</div>
                 <div class="message-body">
                     <div class="message-header"><span class="message-author">${author}</span><span class="message-time">${time}</span>${genTimeHtml}</div>
                     <div class="message-content">${extrasHtml}${formatContent(content)}</div>
@@ -2955,7 +2978,8 @@ Open snake.html in browser to play!`;
                                         let displayHtml = '';
                                         
                                         if (combinedThinking) {
-                                            displayHtml += `<div class="thinking-block"><div class="thinking-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления модели</div><div class="thinking-content">${formatContent(combinedThinking)}</div></div>`;
+                                            // Show thinking collapsed by default during streaming
+                                            displayHtml += `<div class="thinking-block"><div class="thinking-header collapsed" onclick="this.classList.toggle('collapsed');var content=this.nextElementSibling;content.style.display=content.style.display==='block'?'none':'block';"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>🧠 Размышления...</div><div class="thinking-content" style="display:none;">${formatContent(combinedThinking)}</div></div>`;
                                         }
                                         
                                         if (searchOn) {
@@ -3041,6 +3065,7 @@ Open snake.html in browser to play!`;
                 }
 
                 saveChat();
+                updateChatStats();
             } catch (e) {
                 typingEl.remove();
                 if (e.name === 'AbortError') {
@@ -3219,6 +3244,34 @@ Open snake.html in browser to play!`;
             const blob = new Blob([JSON.stringify({ model: currentModel, messages: conversationHistory, exported: new Date().toISOString() }, null, 2)], { type: 'application/json' });
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `chat-${Date.now()}.json`; a.click();
             showToast('✅ Чат экспортирован');
+        }
+        
+        function copyAllChat() {
+            if (!conversationHistory.length) return showToast('Нет сообщений для копирования');
+            let text = conversationHistory.map(m => {
+                const role = m.role === 'user' ? 'Вы' : currentModel.name;
+                const content = typeof m.content === 'string' ? m.content : m.content?.find?.(p => p?.type === 'text')?.text || '';
+                return `${role}:\n${content}`;
+            }).join('\n\n---\n\n');
+            copyToClipboard(text);
+            showToast('✅ Чат скопирован');
+        }
+        
+        function updateChatStats() {
+            const statsItem = document.getElementById('chatStatsItem');
+            const statsText = document.getElementById('chatStatsText');
+            if (conversationHistory.length > 0) {
+                statsItem.style.display = 'flex';
+                const userMsgs = conversationHistory.filter(m => m.role === 'user').length;
+                const aiMsgs = conversationHistory.filter(m => m.role === 'assistant').length;
+                const totalChars = conversationHistory.reduce((sum, m) => {
+                    const c = typeof m.content === 'string' ? m.content : m.content?.find?.(p => p?.type === 'text')?.text || '';
+                    return sum + c.length;
+                }, 0);
+                statsText.textContent = `${userMsgs} ваших • ${aiMsgs} AI • ~${Math.round(totalChars/4)} токенов`;
+            } else {
+                statsItem.style.display = 'none';
+            }
         }
 
         // ============ FILE EXPLORER FUNCTIONS ============
@@ -3437,67 +3490,7 @@ Open snake.html in browser to play!`;
             }
         }
 
-        // Voice input
-        let recognition = null;
-        let isRecording = false;
-        
-        function toggleVoiceInput() {
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                showToast('❌ Голосовой ввод не поддерживается браузером');
-                return;
-            }
-            
-            if (isRecording) {
-                stopVoiceInput();
-                return;
-            }
-            
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.lang = 'ru-RU';
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            
-            recognition.onstart = () => {
-                isRecording = true;
-                document.getElementById('voiceBtn').classList.add('recording');
-                showToast('🎤 Говорите...');
-            };
-            
-            recognition.onresult = (event) => {
-                let transcript = '';
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    transcript += event.results[i][0].transcript;
-                }
-                document.getElementById('messageInput').value = transcript;
-                document.getElementById('sendBtn').disabled = false;
-                autoResize(document.getElementById('messageInput'));
-                updateCharCount();
-            };
-            
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-                stopVoiceInput();
-                if (event.error !== 'aborted') {
-                    showToast('❌ Ошибка распознавания: ' + event.error);
-                }
-            };
-            
-            recognition.onend = () => {
-                stopVoiceInput();
-            };
-            
-            recognition.start();
-        }
-        
-        function stopVoiceInput() {
-            if (recognition) {
-                recognition.stop();
-                recognition = null;
-            }
-            isRecording = false;
-            document.getElementById('voiceBtn').classList.remove('recording');
-        }
+        // Voice input removed
 
         // Hook into file operations from AI response
         function processFileOperations(text) {
