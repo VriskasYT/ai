@@ -70,7 +70,7 @@
             background: var(--bg-primary);
             border-bottom: 1px solid var(--border-color);
             position: relative;
-            z-index: 100;
+            z-index: 10;
             height: var(--header-height);
             min-height: var(--header-height);
             flex-shrink: 0;
@@ -157,12 +157,15 @@
             max-height: 70vh;
             overflow-y: auto;
             display: none;
-            z-index: 1000;
+            z-index: 800;
             overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
         }
 
-        .model-dropdown.show { display: block; animation: dropdownFade 0.2s ease-out; }
+        .model-dropdown.show { 
+            display: block; 
+            animation: dropdownFade 0.2s ease-out; 
+        }
 
         @keyframes dropdownFade {
             from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
@@ -248,10 +251,15 @@
             z-index: 500;
             opacity: 0;
             visibility: hidden;
+            pointer-events: none;
             transition: all 0.3s;
         }
 
-        .overlay.show { opacity: 1; visibility: visible; }
+        .overlay.show { 
+            opacity: 1; 
+            visibility: visible; 
+            pointer-events: auto;
+        }
 
         .side-panel {
             position: fixed;
@@ -497,9 +505,11 @@
             flex: 1;
             overflow-y: auto;
             padding: 16px;
+            padding-top: 20px;
             padding-bottom: 8px;
             -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
+            background: var(--bg-primary);
         }
 
         .message {
@@ -1141,13 +1151,17 @@
             height: 100%;
             background: var(--bg-primary);
             border-right: 1px solid var(--border-color);
-            z-index: 600;
+            z-index: 700;
             transition: left 0.3s ease;
             display: flex;
             flex-direction: column;
+            pointer-events: none;
         }
 
-        .file-explorer.open { left: 0; }
+        .file-explorer.open { 
+            left: 0; 
+            pointer-events: auto;
+        }
 
         .file-explorer-header {
             display: flex;
@@ -1268,7 +1282,7 @@
             .header { padding: 8px 12px; }
             .logo span { display: none; }
             .model-btn { max-width: 140px; padding: 8px 12px; }
-            .messages { padding: 12px; }
+            .messages { padding: 12px; padding-top: 16px; }
             .message { gap: 10px; }
             .message-avatar { width: 32px; height: 32px; }
             .input-area { padding: 10px 12px; padding-bottom: calc(10px + var(--safe-area-bottom)); }
@@ -1277,10 +1291,17 @@
             .scroll-bottom-btn { bottom: 120px; right: 12px; }
             .file-explorer { width: 100%; left: -100%; }
             .file-preview-content { min-width: 90vw; }
-            .welcome-screen { padding: 20px 16px; display: flex !important; }
-            .welcome-logo { width: 70px; height: 70px; margin-bottom: 20px; }
+            .welcome-screen { 
+                padding: 20px 16px !important; 
+                padding-top: 30px !important;
+                display: flex !important; 
+                flex-direction: column !important;
+                justify-content: flex-start !important;
+                overflow-y: auto !important;
+            }
+            .welcome-logo { width: 60px !important; height: 60px !important; margin-bottom: 16px !important; }
             .welcome-title { 
-                font-size: 32px !important; 
+                font-size: 28px !important; 
                 display: block !important; 
                 visibility: visible !important;
                 opacity: 1 !important;
@@ -1288,8 +1309,9 @@
                 background: linear-gradient(90deg, #4285f4, #ea4335, #fbbc04, #34a853) !important;
                 -webkit-background-clip: text !important;
                 background-clip: text !important;
+                margin-bottom: 8px !important;
             }
-            .welcome-subtitle { font-size: 15px; margin-bottom: 24px; display: block !important; visibility: visible !important; }
+            .welcome-subtitle { font-size: 14px !important; margin-bottom: 20px !important; display: block !important; visibility: visible !important; }
             .suggestion { padding: 12px 14px; }
             .suggestion-icon { font-size: 18px; }
         }
@@ -1298,7 +1320,7 @@
             .header { padding: 6px 10px; gap: 4px; }
             .icon-btn { width: 36px; height: 36px; }
             .model-btn { max-width: 120px; padding: 6px 10px; font-size: 13px; }
-            .messages { padding: 8px; }
+            .messages { padding: 8px; padding-top: 16px; }
             .message { padding: 12px 0; gap: 8px; }
             .message-avatar { width: 28px; height: 28px; font-size: 12px; }
             .message-content { font-size: 14px; }
@@ -1306,9 +1328,17 @@
             .input-wrapper textarea { font-size: 15px; }
             .send-btn { width: 36px; height: 36px; }
             .attach-btn { width: 32px; height: 32px; }
-            .welcome-logo { width: 60px; height: 60px; }
+            .welcome-screen { 
+                padding: 16px !important; 
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: flex-start !important;
+                padding-top: 40px !important;
+                overflow-y: auto !important;
+            }
+            .welcome-logo { width: 50px !important; height: 50px !important; margin-bottom: 16px !important; }
             .welcome-title { 
-                font-size: 26px !important; 
+                font-size: 24px !important; 
                 display: block !important; 
                 visibility: visible !important;
                 opacity: 1 !important;
@@ -1316,13 +1346,12 @@
                 background: linear-gradient(90deg, #4285f4, #ea4335, #fbbc04, #34a853) !important;
                 -webkit-background-clip: text !important;
                 background-clip: text !important;
-                min-height: 40px;
+                margin-bottom: 4px !important;
             }
-            .welcome-subtitle { font-size: 14px; display: block !important; visibility: visible !important; }
-            .welcome-screen { padding: 16px; display: flex !important; }
+            .welcome-subtitle { font-size: 13px !important; display: block !important; visibility: visible !important; margin-bottom: 20px !important; }
             .panel-content { padding: 12px; }
             .setting-item { padding: 10px 0; }
-            .suggestions { gap: 8px; }
+            .suggestions { gap: 8px; grid-template-columns: 1fr !important; }
             .suggestion { padding: 10px 12px; }
             .suggestion-icon { font-size: 16px; margin-bottom: 4px; }
             .suggestion-text { font-size: 12px; }
