@@ -402,18 +402,19 @@
 
         .system-prompt-input:focus { border-color: var(--accent); }
 
-        .chat-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+        .chat-container { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 0; }
 
         .welcome-screen {
             flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            padding: 20px;
+            justify-content: flex-start;
+            padding: 40px 20px 20px;
             text-align: center;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
+            min-height: 0;
         }
 
         .welcome-screen {
@@ -511,7 +512,7 @@
         .suggestion-icon { font-size: 20px; margin-bottom: 6px; }
         .suggestion-text { color: var(--text-secondary); font-size: 13px; }
 
-        .messages-wrapper { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; height: 100%; }
+        .messages-wrapper { flex: 1; display: flex; flex-direction: column; min-height: 0; }
         .messages-wrapper.hidden { display: none; }
 
         .messages {
@@ -524,7 +525,6 @@
             overscroll-behavior: contain;
             background: var(--bg-primary);
             min-height: 0;
-            height: 100%;
         }
 
         .message {
@@ -1320,8 +1320,8 @@
             .header { padding: 8px 12px; }
             .logo span { display: none; }
             .model-btn { max-width: 140px; padding: 8px 12px; }
-            .chat-container { flex: 1; min-height: 0; overflow: hidden; }
-            .messages-wrapper { flex: 1; min-height: 0; overflow: hidden; }
+            .chat-container { flex: 1; min-height: 0; }
+            .messages-wrapper { flex: 1; min-height: 0; }
             .messages { padding: 12px; padding-top: 16px; flex: 1; min-height: 0; overflow-y: auto; }
             .message { gap: 10px; }
             .message-avatar { width: 32px; height: 32px; }
@@ -1362,8 +1362,8 @@
             .header { padding: 6px 10px; gap: 4px; height: 50px; min-height: 50px; }
             .icon-btn { width: 36px; height: 36px; }
             .model-btn { max-width: 120px; padding: 6px 10px; font-size: 13px; }
-            .chat-container { flex: 1; min-height: 0; overflow: hidden; }
-            .messages-wrapper { flex: 1; min-height: 0; overflow: hidden; }
+            .chat-container { flex: 1; min-height: 0; }
+            .messages-wrapper { flex: 1; min-height: 0; }
             .messages { padding: 8px; padding-top: 12px; flex: 1; min-height: 0; overflow-y: auto; }
             .message { padding: 10px 0; gap: 8px; }
             .message-avatar { width: 28px; height: 28px; font-size: 12px; }
