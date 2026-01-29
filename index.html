@@ -464,6 +464,10 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            min-height: 1.2em;
         }
 
         .welcome-subtitle { font-size: 16px; color: var(--text-secondary); margin-bottom: 32px; }
@@ -1273,10 +1277,19 @@
             .scroll-bottom-btn { bottom: 120px; right: 12px; }
             .file-explorer { width: 100%; left: -100%; }
             .file-preview-content { min-width: 90vw; }
-            .welcome-screen { padding: 20px 16px; }
+            .welcome-screen { padding: 20px 16px; display: flex !important; }
             .welcome-logo { width: 70px; height: 70px; margin-bottom: 20px; }
-            .welcome-title { font-size: 32px !important; display: block !important; }
-            .welcome-subtitle { font-size: 15px; margin-bottom: 24px; display: block !important; }
+            .welcome-title { 
+                font-size: 32px !important; 
+                display: block !important; 
+                visibility: visible !important;
+                opacity: 1 !important;
+                -webkit-text-fill-color: transparent !important;
+                background: linear-gradient(90deg, #4285f4, #ea4335, #fbbc04, #34a853) !important;
+                -webkit-background-clip: text !important;
+                background-clip: text !important;
+            }
+            .welcome-subtitle { font-size: 15px; margin-bottom: 24px; display: block !important; visibility: visible !important; }
             .suggestion { padding: 12px 14px; }
             .suggestion-icon { font-size: 18px; }
         }
@@ -1294,9 +1307,19 @@
             .send-btn { width: 36px; height: 36px; }
             .attach-btn { width: 32px; height: 32px; }
             .welcome-logo { width: 60px; height: 60px; }
-            .welcome-title { font-size: 28px !important; display: block !important; }
-            .welcome-subtitle { font-size: 14px; display: block !important; }
-            .welcome-screen { padding: 16px; }
+            .welcome-title { 
+                font-size: 26px !important; 
+                display: block !important; 
+                visibility: visible !important;
+                opacity: 1 !important;
+                -webkit-text-fill-color: transparent !important;
+                background: linear-gradient(90deg, #4285f4, #ea4335, #fbbc04, #34a853) !important;
+                -webkit-background-clip: text !important;
+                background-clip: text !important;
+                min-height: 40px;
+            }
+            .welcome-subtitle { font-size: 14px; display: block !important; visibility: visible !important; }
+            .welcome-screen { padding: 16px; display: flex !important; }
             .panel-content { padding: 12px; }
             .setting-item { padding: 10px 0; }
             .suggestions { gap: 8px; }
