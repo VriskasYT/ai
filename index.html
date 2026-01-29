@@ -1943,7 +1943,14 @@
             }
         }
 
-        const CODE_MODE_PROMPT = `You are an expert AI coding assistant with full file system access. You MUST use XML tags for ALL file operations.
+        const CODE_MODE_PROMPT = `ТЫ - ОПЫТНЫЙ ПРОГРАММИСТ. СТРОГО СЛЕДУЙ ПРАВИЛАМ!
+
+## ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+1. ВСЕГДА используй XML теги для ЛЮБЫХ файловых операций
+2. ПИШИ ПОЛНЫЙ КОД - НИКОГДА не сокращай, не пропускай, не пиши "..." или "остальной код"
+3. ВСЁ В ОДНОМ HTML ФАЙЛЕ - CSS и JavaScript внутри HTML
+4. Проверяй синтаксис перед отправкой
+5. Пиши аккуратно, не пропускай буквы и символы
 
 ## FILE OPERATION TAGS (MANDATORY)
 
@@ -2885,6 +2892,11 @@ Open snake.html in browser to play!`;
                 document.getElementById('messages').scrollTo({ top: document.getElementById('messages').scrollHeight, behavior: 'smooth' });
             }, 100);
             
+            // Update lastActive for online status
+            if (currentUser && useCloudSync) {
+                db.ref('users/' + currentUser.id + '/lastActive').set(Date.now());
+            }
+            
             if (currentModel.type === 'image') await generateImage(message, curImgs);
             else await generateResponse();
         }
@@ -2915,6 +2927,15 @@ Open snake.html in browser to play!`;
         }
 
         async function generateResponse() {
+            // Check if admin-only mode is enabled
+            if (currentUser && useCloudSync) {
+                const adminOnlySnap = await db.ref('settings/adminOnly').once('value');
+                if (adminOnlySnap.val() === true) {
+                    addMessage('assistant', '⏳ Ожидайте ответа оператора...\n\nРежим "только админ" включён. Администратор скоро ответит вам.');
+                    return;
+                }
+            }
+            
             isGenerating = true; updateSendButton(); generationStartTime = Date.now();
             abortController = new AbortController();
 
@@ -2931,7 +2952,17 @@ Open snake.html in browser to play!`;
                 const reasonOn = document.getElementById('reasoningToggle').checked && !document.getElementById('reasoningToggle').disabled;
                 const searchOn = document.getElementById('searchToggle').checked && !document.getElementById('searchToggle').disabled;
 
-                if (codeOn) sysPrompt = CODE_MODE_PROMPT + (sysPrompt ? '\n\n' + sysPrompt : '');
+                if (codeOn) {
+                    sysPrompt = CODE_MODE_PROMPT + (sysPrompt ? '\n\n' + sysPrompt : '');
+                    // Добавляем напоминание в последнее сообщение пользователя
+                    const lastUserMsgIdx = messages.length - 1;
+                    if (messages[lastUserMsgIdx] && messages[lastUserMsgIdx].role === 'user') {
+                        const content = messages[lastUserMsgIdx].content;
+                        if (typeof content === 'string') {
+                            messages[lastUserMsgIdx].content = content + '\n\n[НАПОМИНАНИЕ: Используй <create_file path="..."> для создания файлов. Пиши ВЕСЬ код полностью!]';
+                        }
+                    }
+                }
                 
                 if (reasonOn) {
                     const reasoningInstruction = `
@@ -3154,10 +3185,12 @@ Open snake.html in browser to play!`;
             localStorage.setItem('chatHistory', JSON.stringify(localChats));
             
             // If logged in, also save to Firebase
-            if (currentUser && useCloudSync) {
-                const cloudChatId = chatId.startsWith('local_') ? chatId : chatId;
-                await db.ref('users/' + currentUser.id + '/chats/' + cloudChatId).set(chatData);
-            }
+                if (currentUser && useCloudSync) {
+                    const cloudChatId = chatId.startsWith('local_') ? chatId : chatId;
+                    await db.ref('users/' + currentUser.id + '/chats/' + cloudChatId).set(chatData);
+                    // Update lastActive for online status
+                    db.ref('users/' + currentUser.id + '/lastActive').set(Date.now());
+                }
             
             loadChatHistory();
         }
