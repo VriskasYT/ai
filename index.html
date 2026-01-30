@@ -939,6 +939,20 @@
 
         .generated-image { max-width: 100%; max-height: 400px; border-radius: var(--radius-md); margin: 12px 0; box-shadow: var(--shadow-md); cursor: pointer; }
 
+        /* Internet images gallery */
+        .message-content img[src*="http"] {
+            max-width: 200px;
+            max-height: 150px;
+            border-radius: var(--radius-sm);
+            margin: 4px;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .message-content img[src*="http"]:hover {
+            transform: scale(1.05);
+        }
+
         .typing-indicator { display: flex; gap: 4px; padding: 8px 0; }
 
         .typing-dot {
@@ -1752,6 +1766,8 @@
             gptimage: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#10A37F"/><path fill="white" d="M12 4l7 4v8l-7 4-7-4V8l7-4zm0 2.5L7.5 9v6l4.5 2.5 4.5-2.5V9L12 6.5z"/><circle cx="12" cy="12" r="2" fill="white"/></svg>`,
             video: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="videoGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#f093fb"/><stop offset="100%" style="stop-color:#f5576c"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#videoGrad)"/><rect x="4" y="7" width="16" height="10" rx="2" fill="white" opacity="0.9"/><path fill="#f5576c" d="M10 10v4l4-2-4-2z"/></svg>`,
             flux: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="fluxGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#667eea"/><stop offset="50%" style="stop-color:#764ba2"/><stop offset="100%" style="stop-color:#f093fb"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#fluxGrad)"/><path fill="white" d="M7 7h4v4H7V7zm6 0h4v4h-4V7zm-6 6h4v4H7v-4zm6 0h4v4h-4v-4z" opacity="0.9"/></svg>`,
+            vrisai: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="vrisGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#FFD700"/><stop offset="50%" style="stop-color:#FF8C00"/><stop offset="100%" style="stop-color:#FF4500"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#vrisGrad)"/><text x="12" y="17" text-anchor="middle" fill="white" font-size="14" font-weight="bold" font-family="Arial">V</text></svg>`,
+            vrisaipro: `<svg viewBox="0 0 24 24" width="100%" height="100%"><defs><linearGradient id="vrisProGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#00BFFF"/><stop offset="50%" style="stop-color:#9400D3"/><stop offset="100%" style="stop-color:#FF1493"/></linearGradient></defs><rect width="24" height="24" rx="4" fill="url(#vrisProGrad)"/><text x="12" y="15" text-anchor="middle" fill="white" font-size="10" font-weight="bold" font-family="Arial">V⚡</text></svg>`,
             default: `<svg viewBox="0 0 24 24" width="100%" height="100%"><rect width="24" height="24" rx="4" fill="#6B7280"/><circle cx="12" cy="10" r="4" fill="white"/><path fill="white" d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>`
         };
 
@@ -1775,10 +1791,18 @@
             if (modelId.includes('seedream') || modelId.includes('seedance')) return MODEL_AVATARS.seedream;
             if (modelId.includes('gptimage') || modelId.includes('nanobanana') || modelId.includes('kontext')) return MODEL_AVATARS.gptimage;
             if (modelId.includes('wan') || modelId.includes('veo')) return MODEL_AVATARS.video;
+            if (modelId === 'vrisai-pro') return MODEL_AVATARS.vrisaipro;
+            if (modelId.includes('vrisai')) return MODEL_AVATARS.vrisai;
             return MODEL_AVATARS.default;
         }
 
         const MODELS = {
+            vrisai: {
+                main: [
+                    { id: 'vrisai', name: 'VrisAI', desc: 'GPT + Claude + Gemini', caps: ['vision', 'reasoning', 'search', 'code'], isNew: true },
+                    { id: 'vrisai-pro', name: 'VrisAI Pro', desc: 'Поиск + картинки', caps: ['vision', 'reasoning', 'search', 'code'], isNew: true }
+                ]
+            },
             text: {
                 fast: [
                     { id: 'nova-fast', name: 'Amazon Nova Micro', desc: '26.3K ответов', caps: [] },
@@ -2157,6 +2181,7 @@ Open snake.html in browser to play!`;
             const container = document.getElementById('modelList');
             let html = '';
             const cats = {
+                vrisai: { main: '🌟 VrisAI' },
                 text: { fast: '💬 Быстрые', standard: '💬 Стандартные', reasoning: '🧠 Reasoning', premium: '💎 Премиум', special: '✨ Специальные' },
                 image: { fast: '🖼️ Быстрые', advanced: '🖼️ Продвинутые' },
                 video: { alpha: '🎬 Видео (alpha)' }
@@ -3081,6 +3106,44 @@ Open snake.html in browser to play!`;
                     signal: abortController.signal
                 });
 
+                // Check for VrisAI models
+                if (currentModel.id === 'vrisai') {
+                    typingEl.remove();
+                    const content = await generateVrisAI(messages, streaming);
+                    const genTime = ((Date.now() - generationStartTime) / 1000).toFixed(1) + 's';
+                    
+                    const fileOps = parseFileOperations(content);
+                    const cleanContent = removeFileOpTags(content);
+                    const extras = { genTime };
+                    if (fileOps.length) extras.fileOps = fileOps;
+                    
+                    addMessage('assistant', cleanContent, extras);
+                    conversationHistory.push({ role: 'assistant', content });
+                    processFileOperations(content);
+                    saveChat();
+                    isGenerating = false; abortController = null; updateSendButton();
+                    return;
+                }
+                
+                if (currentModel.id === 'vrisai-pro') {
+                    typingEl.remove();
+                    const content = await generateVrisAIPro(messages, streaming);
+                    const genTime = ((Date.now() - generationStartTime) / 1000).toFixed(1) + 's';
+                    
+                    const sources = parseSearchSources(content);
+                    const fileOps = parseFileOperations(content);
+                    const cleanContent = removeFileOpTags(content);
+                    const extras = { genTime, searchOn: true, searchSources: sources };
+                    if (fileOps.length) extras.fileOps = fileOps;
+                    
+                    addMessage('assistant', cleanContent, extras);
+                    conversationHistory.push({ role: 'assistant', content });
+                    processFileOperations(content);
+                    saveChat();
+                    isGenerating = false; abortController = null; updateSendButton();
+                    return;
+                }
+
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
                 typingEl.remove();
@@ -3610,6 +3673,131 @@ Open snake.html in browser to play!`;
 
         // Voice input removed
 
+        // ============ VrisAI FUNCTIONS ============
+        
+        async function generateVrisAI(messages, streaming) {
+            // Send request to 3 models in parallel
+            const models = ['openai-large', 'claude-large', 'gemini-large'];
+            const temperature = parseFloat(document.getElementById('temperatureSlider').value);
+            const maxTokens = parseInt(document.getElementById('tokensSlider').value);
+            
+            const requests = models.map(model => 
+                fetch(`${API_BASE}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model,
+                        messages,
+                        stream: false,
+                        temperature,
+                        max_tokens: maxTokens
+                    }),
+                    signal: abortController.signal
+                }).then(r => r.json()).catch(() => null)
+            );
+            
+            const results = await Promise.all(requests);
+            
+            // Find the best response (longest and most complete)
+            let bestResponse = '';
+            let bestScore = 0;
+            
+            results.forEach((result, i) => {
+                if (result?.choices?.[0]?.message?.content) {
+                    const content = result.choices[0].message.content;
+                    // Score based on length, completeness, and code blocks
+                    let score = content.length;
+                    if (content.includes('</create_file>')) score += 1000; // Has complete file
+                    if (content.includes('```')) score += 500; // Has code
+                    if (!content.includes('...')) score += 200; // No abbreviations
+                    
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestResponse = content;
+                    }
+                }
+            });
+            
+            return bestResponse || 'Не удалось получить ответ от моделей.';
+        }
+        
+        async function generateVrisAIPro(messages, streaming) {
+            // First get response with search from Perplexity
+            const temperature = parseFloat(document.getElementById('temperatureSlider').value);
+            const maxTokens = parseInt(document.getElementById('tokensSlider').value);
+            
+            const res = await fetch(`${API_BASE}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: 'perplexity-reasoning',
+                    messages,
+                    stream: false,
+                    temperature,
+                    max_tokens: maxTokens
+                }),
+                signal: abortController.signal
+            });
+            
+            const json = await res.json();
+            let content = json.choices?.[0]?.message?.content || '';
+            
+            // Search for relevant images
+            if (content) {
+                const keywords = extractKeywords(content);
+                if (keywords.length > 0) {
+                    const images = await searchImages(keywords.slice(0, 3).join(' '));
+                    if (images.length > 0) {
+                        content += '\n\n---\n\n**📸 Изображения по теме:**\n\n';
+                        images.slice(0, 4).forEach((img, i) => {
+                            content += `![Изображение ${i+1}](${img.url})\n*${img.title || 'Изображение'}*\n\n`;
+                        });
+                    }
+                }
+            }
+            
+            return content;
+        }
+        
+        function extractKeywords(text) {
+            // Extract important words for image search
+            const words = text.toLowerCase()
+                .replace(/[^a-zа-яё\s]/gi, ' ')
+                .split(/\s+/)
+                .filter(w => w.length > 4);
+            
+            // Count frequency
+            const freq = {};
+            words.forEach(w => freq[w] = (freq[w] || 0) + 1);
+            
+            // Sort by frequency and return top keywords
+            return Object.entries(freq)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([word]) => word);
+        }
+        
+        async function searchImages(query) {
+            try {
+                // Use DuckDuckGo image search API
+                const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&iax=images&ia=images`);
+                const data = await res.json();
+                
+                if (data.RelatedTopics) {
+                    return data.RelatedTopics
+                        .filter(t => t.Icon && t.Icon.URL)
+                        .map(t => ({ url: t.Icon.URL, title: t.Text }));
+                }
+                
+                // Fallback - generate images with Pollinations
+                return [
+                    { url: `${API_BASE}/image/${encodeURIComponent(query)}?width=400&height=300&nologo=true`, title: query }
+                ];
+            } catch {
+                return [];
+            }
+        }
+        
         // Hook into file operations from AI response
         function processFileOperations(text) {
             const ops = parseFileOperations(text);
