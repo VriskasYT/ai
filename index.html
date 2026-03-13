@@ -1080,18 +1080,16 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore,
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  serverTimestamp,
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  addDoc
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  getDatabase,
+  ref,
+  set,
+  get,
+  update,
+  onValue,
+  off,
+  serverTimestamp as rtdbServerTimestamp,
+  onDisconnect
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyASITmll57kQ8MI1kJ-4k5HQfaHiolJsC0",
@@ -1104,7 +1102,7 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
+const rtdb = getDatabase(firebaseApp);
 
 const API_KEY = 'sk_OWjCd8R8RXqTPMsad5DEAWocW4FaYFbK';
 const API_BASE = 'https://gen.pollinations.ai';
@@ -2717,20 +2715,30 @@ function buildCloudPayload() {
   };
 }
 
+function getUserMetaRef(uid = currentUser?.uid) {
+  return ref(rtdb, `users/${uid}/meta`);
+}
+
+function getUserStateRef(uid = currentUser?.uid) {
+  return ref(rtdb, `users/${uid}/state`);
+}
+
 async function syncCloudData(force = false) {
   if (!currentUser) return;
   if (cloudSyncInProgress && !force) return;
   cloudSyncInProgress = true;
   try {
-    await setDoc(doc(db, 'users', currentUser.uid), {
+    await update(getUserMetaRef(), {
       uid: currentUser.uid,
       nickname: currentUser.displayName || '',
       email: currentUser.email || '',
-      lastSeen: serverTimestamp(),
       app: APP_NAME,
-      online: true
-    }, { merge: true });
-    await setDoc(doc(db, 'users', currentUser.uid, 'private', 'state'), buildCloudPayload(), { merge: true });
+      online: true,
+      typing: false,
+      lastSeen: Date.now(),
+      updatedAt: Date.now()
+    });
+    await set(getUserStateRef(), buildCloudPayload());
     updateCloudStatus(getUserDisplayName(), 'Облако подключено', 'online');
   } catch (e) {
     console.warn('Cloud sync failed', e);
@@ -2742,12 +2750,12 @@ async function syncCloudData(force = false) {
 async function restoreCloudData() {
   if (!currentUser) return;
   try {
-    const snap = await getDoc(doc(db, 'users', currentUser.uid, 'private', 'state'));
+    const snap = await get(getUserStateRef());
     if (!snap.exists()) {
       await syncCloudData(true);
       return;
     }
-    const data = snap.data() || {};
+    const data = snap.val() || {};
     if (Array.isArray(data.chats) && data.chats.length) chats = data.chats;
     if (data.memory && typeof data.memory === 'object') memory = data.memory;
     if (data.settings) {
@@ -2837,11 +2845,64 @@ async function logoutCloud() {
 
 function watchCloudPresence() {
   if (!currentUser) return;
-  if (cloudChatsUnsub) cloudChatsUnsub();
-  const ref = doc(db, 'users', currentUser.uid, 'private', 'state');
-  cloudChatsUnsub = onSnapshot(ref, () => {
+  if (cloudChatsUnsub) {
+    try { off(getUserStateRef(), 'value', cloudChatsUnsub); } catch {}
+    cloudChatsUnsub = null;
+  }
+  const stateRef = getUserStateRef();
+  const handler = snapshot => {
+    const data = snapshot.val() || {};
+    if (Array.isArray(data.chats)) {
+      chats = data.chats;
+      setLocalStorageCompat('chats', JSON.stringify(chats));
+      renderChatList();
+      if (currentChatId) renderChat();
+    }
+    if (data.memory && typeof data.memory === 'object') {
+      memory = data.memory;
+      setLocalStorageCompat('memory', JSON.stringify(memory));
+      updateMemoryCount();
+    }
+    if (data.settings) {
+      currentModel = data.settings.currentModel || currentModel;
+      currentImageModel = data.settings.currentImageModel || currentImageModel;
+      currentVideoModel = data.settings.currentVideoModel || currentVideoModel;
+      currentMusicModel = data.settings.currentMusicModel || currentMusicModel;
+      customKeyboardEnabled = !!data.settings.customKeyboardEnabled;
+      updateModelDisplay();
+    }
     updateCloudStatus(getUserDisplayName(), 'Облако подключено', 'online');
-  });
+  };
+  onValue(stateRef, handler);
+  cloudChatsUnsub = handler;
+}
+
+async function setupRealtimePresence(user) {
+  if (!user) return;
+  try {
+    const metaRef = getUserMetaRef(user.uid);
+    const connectedRef = ref(rtdb, '.info/connected');
+    onValue(connectedRef, async snap => {
+      if (snap.val() === false) return;
+      try {
+        await onDisconnect(metaRef).update({ online: false, typing: false, lastSeen: Date.now(), updatedAt: Date.now() });
+        await update(metaRef, {
+          uid: user.uid,
+          nickname: user.displayName || '',
+          email: user.email || '',
+          app: APP_NAME,
+          online: true,
+          typing: false,
+          lastSeen: Date.now(),
+          updatedAt: Date.now()
+        });
+      } catch(e) {
+        console.warn('Presence setup failed', e);
+      }
+    }, { onlyOnce: true });
+  } catch(e) {
+    console.warn('Realtime presence failed', e);
+  }
 }
 
 function initCloudAuthWatcher() {
@@ -2852,10 +2913,14 @@ function initCloudAuthWatcher() {
       updateCloudStatus(getUserDisplayName(user), user.email || 'Аккаунт подключён', 'online');
       await restoreCloudData();
       await syncCloudData(true);
+      await setupRealtimePresence(user);
       watchCloudPresence();
     } else {
       updateCloudStatus('Локальный режим', 'Данные пока только на устройстве', 'offline');
-      if (cloudChatsUnsub) { cloudChatsUnsub(); cloudChatsUnsub = null; }
+      if (cloudChatsUnsub) {
+        try { off(getUserStateRef(), 'value', cloudChatsUnsub); } catch {}
+        cloudChatsUnsub = null;
+      }
     }
   });
 }
