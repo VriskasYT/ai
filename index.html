@@ -2597,7 +2597,7 @@ function openModelPicker() {
       </select>
     </div>`;
   const html = `
-    <h3>Модели NexusAI</h3>
+    <h3>Модели VrisAi</h3>
     <p>Здесь можно отдельно выбрать модель для текста, изображений, видео и музыки ✨</p>
     ${select('Текстовая модель', 'picker-text-model', textModels, currentModel, 'setTextModel')}
     ${select('Модель изображений', 'picker-image-model', imageModels, currentImageModel, 'setImageModel')}
@@ -3284,10 +3284,19 @@ document.addEventListener('focusin', () => {
   }
 });
 
+// Expose module functions for inline handlers
+[
+  'toggleSidebar','createNewChat','switchChat','deleteChat','openCloudAuthModal','signInWithGoogleVris','submitCloudAuth','pickCaptcha','skipCaptcha','logoutCloud','openModelPicker','setTextModel','setImageModel','setVideoModel','setMusicModel','toggleAttachMenu','attachFile','handleFileSelect','removeAttachment','handleInputKey','autoResize','handleSend','viewImage','closeModal','useSuggestion','openCodeArtifact','copyArtifactCode','copyCode','submitInlineInput','hideCustomKeyboard','aiKeyboardAssist','insertSuggestion','keyboardType','keyboardBackspace','keyboardSendOrNewline','toggleKeyboardLang','toggleKeyboardShift','openChessModal','inviteFriend','renderChat','showWelcome'
+].forEach((name) => {
+  if (typeof globalThis[name] === 'function') window[name] = globalThis[name];
+});
+
 // Init
 init();
+initCloudAuthWatcher();
 syncMobileViewport();
-window.NexusAI = { version: 'mobile-kbd-fix-2' };
+window.VrisAi = { version: 'vrisai-hotfix-inline-handlers-1' };
+window.NexusAI = window.VrisAi;
 </script>
 </body>
 </html>
