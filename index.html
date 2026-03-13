@@ -1477,25 +1477,13 @@ function processAssistantContent(content) {
     mediaGenerationPending++;
     setTimeout(() => {
       const imgEl = document.getElementById(imgId);
-      const blockEl = document.getElementById(blockId);
-      const noteEl = document.getElementById(noteId);
-      if (imgEl) {
-        imgEl.onload = () => {
-          if (blockEl) blockEl.style.display = 'none';
-          imgEl.style.display = 'block';
-          if (noteEl) noteEl.innerHTML = `Вот, получилось ✨ Модель <strong>${escapeHtml(imageModel)}</strong> дорисовала сцену: <strong>${escapeHtml(prompt.length > 90 ? prompt.slice(0, 87) + '…' : prompt)}</strong> 🎨`;
-          mediaGenerationPending = Math.max(0, mediaGenerationPending - 1);
-        };
-        imgEl.onerror = () => {
-          if (blockEl) blockEl.innerHTML = '<div class="error-block">😅 Картинка не загрузилась! Сервер генерации отдыхает. Попробуй ещё раз! 🎨</div>';
-          imgEl.style.display = 'none';
-          if (noteEl) noteEl.innerHTML = '';
-          mediaGenerationPending = Math.max(0, mediaGenerationPending - 1);
-        };
+      if (!imgEl) return;
+      if (imgEl.complete && imgEl.naturalWidth > 0) {
+        handleGeneratedImageLoad(imgId, blockId, noteId, imageModel, prompt);
       }
-    }, 50);
+    }, 80);
     return `<div class="img-gen-block" id="${blockId}"><div class="gen-spinner"></div><div class="gen-text">🎨 Генерация изображения · ${escapeHtml(imageModel)}<span class="gen-dots"></span></div></div>
-    <img class="msg-image" id="${imgId}" src="${imgUrl}" alt="${escapeHtml(prompt)}" style="display:none" onclick="viewImage(this.src)">
+    <img class="msg-image" id="${imgId}" src="${imgUrl}" alt="${escapeHtml(prompt)}" style="display:none" onclick="viewImage(this.src)" onload="handleGeneratedImageLoad('${imgId}','${blockId}','${noteId}', ${JSON.stringify(imageModel)}, ${JSON.stringify(prompt)})" onerror="handleGeneratedImageError('${imgId}','${blockId}','${noteId}')">
     <div class="media-followup" id="${noteId}"></div>`;
   });
 
@@ -1509,25 +1497,13 @@ function processAssistantContent(content) {
     mediaGenerationPending++;
     setTimeout(() => {
       const videoEl = document.getElementById(videoId);
-      const blockEl = document.getElementById(blockId);
-      const noteEl = document.getElementById(noteId);
-      if (videoEl) {
-        videoEl.onloadeddata = () => {
-          if (blockEl) blockEl.style.display = 'none';
-          videoEl.style.display = 'block';
-          if (noteEl) noteEl.innerHTML = `Готово 🎬 Видео собрано моделью <strong>${escapeHtml(videoModel)}</strong>. Получилась сцена: <strong>${escapeHtml(prompt.length > 90 ? prompt.slice(0, 87) + '…' : prompt)}</strong>`;
-          mediaGenerationPending = Math.max(0, mediaGenerationPending - 1);
-        };
-        videoEl.onerror = () => {
-          if (blockEl) blockEl.innerHTML = '<div class="error-block">🎬 Видео не получилось загрузить. Возможно, выбранная модель сейчас недоступна или генерация заняла слишком долго 🙃</div>';
-          videoEl.style.display = 'none';
-          if (noteEl) noteEl.innerHTML = '';
-          mediaGenerationPending = Math.max(0, mediaGenerationPending - 1);
-        };
+      if (!videoEl) return;
+      if (videoEl.readyState >= 2) {
+        handleGeneratedVideoLoad(videoId, blockId, noteId, videoModel, prompt);
       }
-    }, 50);
+    }, 120);
     return `<div class="img-gen-block" id="${blockId}"><div class="gen-spinner"></div><div class="gen-text">🎬 Генерация видео · ${escapeHtml(videoModel)}<span class="gen-dots"></span></div></div>
-    <video class="generated-media video" id="${videoId}" src="${videoUrl}" controls playsinline style="display:none"></video>
+    <video class="generated-media video" id="${videoId}" src="${videoUrl}" controls playsinline style="display:none" onloadeddata="handleGeneratedVideoLoad('${videoId}','${blockId}','${noteId}', ${JSON.stringify(videoModel)}, ${JSON.stringify(prompt)})" onerror="handleGeneratedVideoError('${videoId}','${blockId}','${noteId}')"></video>
     <div class="media-caption">${escapeHtml(prompt)}</div>
     <div class="media-followup" id="${noteId}"></div>`;
   });
@@ -1543,25 +1519,13 @@ function processAssistantContent(content) {
     mediaGenerationPending++;
     setTimeout(() => {
       const audioEl = document.getElementById(audioId);
-      const blockEl = document.getElementById(blockId);
-      const noteEl = document.getElementById(noteId);
-      if (audioEl) {
-        audioEl.onloadeddata = () => {
-          if (blockEl) blockEl.style.display = 'none';
-          audioEl.style.display = 'block';
-          if (noteEl) noteEl.innerHTML = `Вот 🎵 Трек готов. Его собрала модель <strong>${escapeHtml(musicModel)}</strong>, настроение — <strong>${escapeHtml(prompt.length > 90 ? prompt.slice(0, 87) + '…' : prompt)}</strong>.`;
-          mediaGenerationPending = Math.max(0, mediaGenerationPending - 1);
-        };
-        audioEl.onerror = () => {
-          if (blockEl) blockEl.innerHTML = '<div class="error-block">🎵 Музыка не загрузилась. Возможно, генератор сейчас перегружен или трек ещё не готов. Попробуй ещё раз ✨</div>';
-          audioEl.style.display = 'none';
-          if (noteEl) noteEl.innerHTML = '';
-          mediaGenerationPending = Math.max(0, mediaGenerationPending - 1);
-        };
+      if (!audioEl) return;
+      if (audioEl.readyState >= 2) {
+        handleGeneratedAudioLoad(audioId, blockId, noteId, musicModel, prompt);
       }
-    }, 50);
+    }, 120);
     return `<div class="img-gen-block" id="${blockId}"><div class="gen-spinner"></div><div class="gen-text">🎵 Генерация музыки · ${escapeHtml(musicModel)}<span class="gen-dots"></span></div></div>
-    <div class="generated-media audio"><audio id="${audioId}" src="${audioUrl}" controls style="display:none;width:100%"></audio></div>
+    <div class="generated-media audio"><audio id="${audioId}" src="${audioUrl}" controls style="display:none;width:100%" onloadeddata="handleGeneratedAudioLoad('${audioId}','${blockId}','${noteId}', ${JSON.stringify(musicModel)}, ${JSON.stringify(prompt)})" onerror="handleGeneratedAudioError('${audioId}','${blockId}','${noteId}')"></audio></div>
     <div class="media-caption">${escapeHtml(prompt)} · ${dur} сек</div>
     <div class="media-followup" id="${noteId}"></div>`;
   });
@@ -2204,6 +2168,75 @@ function processPostRender(el) {
   el.querySelectorAll('pre code').forEach(block => {
     if (!block.classList.contains('hljs')) { try { hljs.highlightElement(block); } catch {} }
   });
+}
+
+function finishMediaPendingOnce(el) {
+  if (!el || el.dataset.mediaDone === '1') return;
+  el.dataset.mediaDone = '1';
+  mediaGenerationPending = Math.max(0, mediaGenerationPending - 1);
+}
+
+function handleGeneratedImageLoad(imgId, blockId, noteId, imageModel, prompt) {
+  const imgEl = document.getElementById(imgId);
+  const blockEl = document.getElementById(blockId);
+  const noteEl = document.getElementById(noteId);
+  if (!imgEl) return;
+  if (blockEl) blockEl.style.display = 'none';
+  imgEl.style.display = 'block';
+  if (noteEl) noteEl.innerHTML = `Вот, получилось ✨ Модель <strong>${escapeHtml(imageModel)}</strong> дорисовала сцену: <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'изображение'))}</strong> 🎨`;
+  finishMediaPendingOnce(imgEl);
+}
+
+function handleGeneratedImageError(imgId, blockId, noteId) {
+  const imgEl = document.getElementById(imgId);
+  const blockEl = document.getElementById(blockId);
+  const noteEl = document.getElementById(noteId);
+  if (blockEl) blockEl.innerHTML = '<div class="error-block">😅 Картинка не загрузилась! Сервер генерации отдыхает. Попробуй ещё раз! 🎨</div>';
+  if (imgEl) imgEl.style.display = 'none';
+  if (noteEl) noteEl.innerHTML = '';
+  finishMediaPendingOnce(imgEl || blockEl);
+}
+
+function handleGeneratedVideoLoad(videoId, blockId, noteId, videoModel, prompt) {
+  const videoEl = document.getElementById(videoId);
+  const blockEl = document.getElementById(blockId);
+  const noteEl = document.getElementById(noteId);
+  if (!videoEl) return;
+  if (blockEl) blockEl.style.display = 'none';
+  videoEl.style.display = 'block';
+  if (noteEl) noteEl.innerHTML = `Готово 🎬 Видео собрано моделью <strong>${escapeHtml(videoModel)}</strong>. Получилась сцена: <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'видео'))}</strong>`;
+  finishMediaPendingOnce(videoEl);
+}
+
+function handleGeneratedVideoError(videoId, blockId, noteId) {
+  const videoEl = document.getElementById(videoId);
+  const blockEl = document.getElementById(blockId);
+  const noteEl = document.getElementById(noteId);
+  if (blockEl) blockEl.innerHTML = '<div class="error-block">🎬 Видео не получилось загрузить. Возможно, выбранная модель сейчас недоступна или генерация заняла слишком долго 🙃</div>';
+  if (videoEl) videoEl.style.display = 'none';
+  if (noteEl) noteEl.innerHTML = '';
+  finishMediaPendingOnce(videoEl || blockEl);
+}
+
+function handleGeneratedAudioLoad(audioId, blockId, noteId, musicModel, prompt) {
+  const audioEl = document.getElementById(audioId);
+  const blockEl = document.getElementById(blockId);
+  const noteEl = document.getElementById(noteId);
+  if (!audioEl) return;
+  if (blockEl) blockEl.style.display = 'none';
+  audioEl.style.display = 'block';
+  if (noteEl) noteEl.innerHTML = `Вот 🎵 Трек готов. Его собрала модель <strong>${escapeHtml(musicModel)}</strong>, настроение — <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'музыка'))}</strong>.`;
+  finishMediaPendingOnce(audioEl);
+}
+
+function handleGeneratedAudioError(audioId, blockId, noteId) {
+  const audioEl = document.getElementById(audioId);
+  const blockEl = document.getElementById(blockId);
+  const noteEl = document.getElementById(noteId);
+  if (blockEl) blockEl.innerHTML = '<div class="error-block">🎵 Музыка не загрузилась. Возможно, генератор сейчас перегружен или трек ещё не готов. Попробуй ещё раз ✨</div>';
+  if (audioEl) audioEl.style.display = 'none';
+  if (noteEl) noteEl.innerHTML = '';
+  finishMediaPendingOnce(audioEl || blockEl);
 }
 
 // ===== INPUT HANDLING =====
@@ -3271,7 +3304,13 @@ const __inlineHandlers = {
   openChessModal: typeof openChessModal !== 'undefined' ? openChessModal : undefined,
   inviteFriend: typeof inviteFriend !== 'undefined' ? inviteFriend : undefined,
   renderChat: typeof renderChat !== 'undefined' ? renderChat : undefined,
-  showWelcome: typeof showWelcome !== 'undefined' ? showWelcome : undefined
+  showWelcome: typeof showWelcome !== 'undefined' ? showWelcome : undefined,
+  handleGeneratedImageLoad: typeof handleGeneratedImageLoad !== 'undefined' ? handleGeneratedImageLoad : undefined,
+  handleGeneratedImageError: typeof handleGeneratedImageError !== 'undefined' ? handleGeneratedImageError : undefined,
+  handleGeneratedVideoLoad: typeof handleGeneratedVideoLoad !== 'undefined' ? handleGeneratedVideoLoad : undefined,
+  handleGeneratedVideoError: typeof handleGeneratedVideoError !== 'undefined' ? handleGeneratedVideoError : undefined,
+  handleGeneratedAudioLoad: typeof handleGeneratedAudioLoad !== 'undefined' ? handleGeneratedAudioLoad : undefined,
+  handleGeneratedAudioError: typeof handleGeneratedAudioError !== 'undefined' ? handleGeneratedAudioError : undefined
 };
 for (const [name, fn] of Object.entries(__inlineHandlers)) {
   if (typeof fn === 'function') window[name] = fn;
