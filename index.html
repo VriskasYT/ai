@@ -986,10 +986,6 @@ body.ai-kbd-active #msg-input { pointer-events: auto; }
             <span class="material-symbols-rounded" style="font-size:16px;">cloud_upload</span>
             Облако
           </button>
-          <a class="sidebar-mini-btn" href="admin.html" target="_blank" rel="noopener">
-            <span class="material-symbols-rounded" style="font-size:16px;">admin_panel_settings</span>
-            Админ
-          </a>
         </div>
         <div class="account-note">Можно войти и сохранить переписки, память и настройки в облаке Firebase ✨</div>
       </div>
@@ -3285,11 +3281,52 @@ document.addEventListener('focusin', () => {
 });
 
 // Expose module functions for inline handlers
-[
-  'toggleSidebar','createNewChat','switchChat','deleteChat','openCloudAuthModal','signInWithGoogleVris','submitCloudAuth','pickCaptcha','skipCaptcha','logoutCloud','openModelPicker','setTextModel','setImageModel','setVideoModel','setMusicModel','toggleAttachMenu','attachFile','handleFileSelect','removeAttachment','handleInputKey','autoResize','handleSend','viewImage','closeModal','useSuggestion','openCodeArtifact','copyArtifactCode','copyCode','submitInlineInput','hideCustomKeyboard','aiKeyboardAssist','insertSuggestion','keyboardType','keyboardBackspace','keyboardSendOrNewline','toggleKeyboardLang','toggleKeyboardShift','openChessModal','inviteFriend','renderChat','showWelcome'
-].forEach((name) => {
-  if (typeof globalThis[name] === 'function') window[name] = globalThis[name];
-});
+const __inlineHandlers = {
+  toggleSidebar: typeof toggleSidebar !== 'undefined' ? toggleSidebar : undefined,
+  createNewChat: typeof createNewChat !== 'undefined' ? createNewChat : undefined,
+  switchChat: typeof switchChat !== 'undefined' ? switchChat : undefined,
+  deleteChat: typeof deleteChat !== 'undefined' ? deleteChat : undefined,
+  openCloudAuthModal: typeof openCloudAuthModal !== 'undefined' ? openCloudAuthModal : undefined,
+  signInWithGoogleVris: typeof signInWithGoogleVris !== 'undefined' ? signInWithGoogleVris : undefined,
+  submitCloudAuth: typeof submitCloudAuth !== 'undefined' ? submitCloudAuth : undefined,
+  pickCaptcha: typeof pickCaptcha !== 'undefined' ? pickCaptcha : undefined,
+  skipCaptcha: typeof skipCaptcha !== 'undefined' ? skipCaptcha : undefined,
+  logoutCloud: typeof logoutCloud !== 'undefined' ? logoutCloud : undefined,
+  openModelPicker: typeof openModelPicker !== 'undefined' ? openModelPicker : undefined,
+  setTextModel: typeof setTextModel !== 'undefined' ? setTextModel : undefined,
+  setImageModel: typeof setImageModel !== 'undefined' ? setImageModel : undefined,
+  setVideoModel: typeof setVideoModel !== 'undefined' ? setVideoModel : undefined,
+  setMusicModel: typeof setMusicModel !== 'undefined' ? setMusicModel : undefined,
+  toggleAttachMenu: typeof toggleAttachMenu !== 'undefined' ? toggleAttachMenu : undefined,
+  attachFile: typeof attachFile !== 'undefined' ? attachFile : undefined,
+  handleFileSelect: typeof handleFileSelect !== 'undefined' ? handleFileSelect : undefined,
+  removeAttachment: typeof removeAttachment !== 'undefined' ? removeAttachment : undefined,
+  handleInputKey: typeof handleInputKey !== 'undefined' ? handleInputKey : undefined,
+  autoResize: typeof autoResize !== 'undefined' ? autoResize : undefined,
+  handleSend: typeof handleSend !== 'undefined' ? handleSend : undefined,
+  viewImage: typeof viewImage !== 'undefined' ? viewImage : undefined,
+  closeModal: typeof closeModal !== 'undefined' ? closeModal : undefined,
+  useSuggestion: typeof useSuggestion !== 'undefined' ? useSuggestion : undefined,
+  openCodeArtifact: typeof openCodeArtifact !== 'undefined' ? openCodeArtifact : undefined,
+  copyArtifactCode: typeof copyArtifactCode !== 'undefined' ? copyArtifactCode : undefined,
+  copyCode: typeof copyCode !== 'undefined' ? copyCode : undefined,
+  submitInlineInput: typeof submitInlineInput !== 'undefined' ? submitInlineInput : undefined,
+  hideCustomKeyboard: typeof hideCustomKeyboard !== 'undefined' ? hideCustomKeyboard : undefined,
+  aiKeyboardAssist: typeof aiKeyboardAssist !== 'undefined' ? aiKeyboardAssist : undefined,
+  insertSuggestion: typeof insertSuggestion !== 'undefined' ? insertSuggestion : undefined,
+  keyboardType: typeof keyboardType !== 'undefined' ? keyboardType : undefined,
+  keyboardBackspace: typeof keyboardBackspace !== 'undefined' ? keyboardBackspace : undefined,
+  keyboardSendOrNewline: typeof keyboardSendOrNewline !== 'undefined' ? keyboardSendOrNewline : undefined,
+  toggleKeyboardLang: typeof toggleKeyboardLang !== 'undefined' ? toggleKeyboardLang : undefined,
+  toggleKeyboardShift: typeof toggleKeyboardShift !== 'undefined' ? toggleKeyboardShift : undefined,
+  openChessModal: typeof openChessModal !== 'undefined' ? openChessModal : undefined,
+  inviteFriend: typeof inviteFriend !== 'undefined' ? inviteFriend : undefined,
+  renderChat: typeof renderChat !== 'undefined' ? renderChat : undefined,
+  showWelcome: typeof showWelcome !== 'undefined' ? showWelcome : undefined
+};
+for (const [name, fn] of Object.entries(__inlineHandlers)) {
+  if (typeof fn === 'function') window[name] = fn;
+}
 
 // Init
 init();
