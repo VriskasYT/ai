@@ -981,13 +981,13 @@ body.ai-kbd-active #msg-input { pointer-events: auto; }
             <small id="cloud-user-meta">Данные пока на устройстве</small>
           </div>
         </div>
-        <div class="cloud-actions">
+        <div class="cloud-actions" id="cloud-actions">
           <button class="sidebar-mini-btn primary" onclick="openCloudAuthModal()">
             <span class="material-symbols-rounded" style="font-size:16px;">cloud_upload</span>
-            Облако
+            Войти
           </button>
         </div>
-        <div class="account-note">Можно войти и сохранить переписки, память и настройки в облаке Firebase ✨</div>
+        <div class="account-note" id="cloud-account-note">Можно войти и сохранить переписки, память и настройки в облаке Firebase ✨</div>
       </div>
     </div>
   </aside>
@@ -1076,8 +1076,6 @@ import {
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -1107,7 +1105,6 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const googleProvider = new GoogleAuthProvider();
 
 const API_KEY = 'sk_OWjCd8R8RXqTPMsad5DEAWocW4FaYFbK';
 const API_BASE = 'https://gen.pollinations.ai';
@@ -2636,6 +2633,27 @@ function getUserDisplayName(user = currentUser) {
   return user.displayName || user.email || 'Пользователь';
 }
 
+function renderCloudActions() {
+  const wrap = document.getElementById('cloud-actions');
+  const note = document.getElementById('cloud-account-note');
+  if (!wrap) return;
+  if (currentUser) {
+    wrap.innerHTML = `
+      <button class="sidebar-mini-btn" onclick="logoutCloud()">
+        <span class="material-symbols-rounded" style="font-size:16px;">logout</span>
+        Выйти
+      </button>`;
+    if (note) note.textContent = 'Аккаунт подключён. Переписки и память можно хранить в облаке.';
+  } else {
+    wrap.innerHTML = `
+      <button class="sidebar-mini-btn primary" onclick="openCloudAuthModal()">
+        <span class="material-symbols-rounded" style="font-size:16px;">cloud_upload</span>
+        Войти
+      </button>`;
+    if (note) note.textContent = 'Можно войти и сохранить переписки, память и настройки в облаке Firebase ✨';
+  }
+}
+
 function updateCloudStatus(label, meta, state = 'offline') {
   const dot = document.getElementById('cloud-presence-dot');
   const nameEl = document.getElementById('cloud-user-name');
@@ -2647,6 +2665,7 @@ function updateCloudStatus(label, meta, state = 'offline') {
     if (state === 'online') dot.classList.add('online');
     if (state === 'syncing') dot.classList.add('syncing');
   }
+  renderCloudActions();
 }
 
 function buildCloudPayload() {
@@ -2669,7 +2688,6 @@ async function syncCloudData(force = false) {
   if (!currentUser) return;
   if (cloudSyncInProgress && !force) return;
   cloudSyncInProgress = true;
-  updateCloudStatus(getUserDisplayName(), 'Синхронизация с облаком…', 'syncing');
   try {
     await setDoc(doc(db, 'users', currentUser.uid), {
       uid: currentUser.uid,
@@ -2680,7 +2698,7 @@ async function syncCloudData(force = false) {
       online: true
     }, { merge: true });
     await setDoc(doc(db, 'users', currentUser.uid, 'private', 'state'), buildCloudPayload(), { merge: true });
-    updateCloudStatus(getUserDisplayName(), 'Переписки и память сохранены в Firebase', 'online');
+    updateCloudStatus(getUserDisplayName(), 'Облако подключено', 'online');
   } catch (e) {
     console.warn('Cloud sync failed', e);
     updateCloudStatus(getUserDisplayName(), 'Не удалось сохранить в облако 🙃', 'offline');
@@ -2727,29 +2745,7 @@ function sanitizeNickname(nick) {
   return (nick || '').trim().slice(0, 30);
 }
 
-async function generateCaptchaOptions(target = 'котик') {
-  const base = [
-    `${target} в мягком свете, cute illustration`,
-    `${target} на пастельном фоне, adorable sticker style`,
-    `${target} с большими глазами, soft 3d render`,
-    `милый робот на фоне звезд, cute mascot art`,
-    `дружелюбный чайник на столе, whimsical illustration`,
-    `маленький кактус в горшке, kawaii art`,
-    `бумажный самолётик в небе, dreamy minimal poster`,
-    `плюшевый мишка с шарфом, toy photography`
-  ];
-  const pool = [...base].sort(() => Math.random() - 0.5).slice(0, 8);
-  const correctIndex = Math.floor(Math.random() * pool.length);
-  pool[correctIndex] = `${target}, centered, clean background, cute illustration`;
-  return { target, options: pool, correctIndex };
-}
-
 async function openCloudAuthModal(mode = 'login') {
-  const captcha = await generateCaptchaOptions('котик');
-  const optionCards = captcha.options.map((prompt, i) => {
-    const url = `${API_BASE}/image/${encodeURIComponent(prompt)}?model=flux&width=256&height=256&seed=${100+i}&key=${API_KEY}`;
-    return `<button class="captcha-card" onclick="pickCaptcha(${i})"><img src="${url}" alt="captcha ${i}"><span>${i === captcha.correctIndex ? 'Возможно котик' : 'Проверка'}</span></button>`;
-  }).join('');
   document.getElementById('modal-content').innerHTML = `
     <h3>Облако VrisAi</h3>
     <p>Войти необязательно — но так можно сохранить переписки, память и настройки в Firebase и перенести их между устройствами ☁️</p>
@@ -2762,50 +2758,17 @@ async function openCloudAuthModal(mode = 'login') {
       <input id="auth-email" class="ai-kbd-ai-input" placeholder="Почта или ник" value="">
       <input id="auth-password" class="ai-kbd-ai-input" type="password" placeholder="Пароль">
     </div>
-    ${mode === 'register' ? `
-      <div style="margin-top:18px;">
-        <div style="font-size:13px;color:var(--md-on-surface-variant);margin-bottom:8px;">Капча: выбери картинку с котиком 🐱 Можно пропустить, если генерация капчи вдруг не сработает.</div>
-        <div id="captcha-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">${optionCards}</div>
-        <div id="captcha-status" style="font-size:12px;color:var(--md-outline);margin-top:8px;">Капча ещё не выбрана</div>
-      </div>
-    ` : ''}
-    <div class="modal-actions" style="margin-top:18px;justify-content:space-between;">
-      <button class="modal-btn secondary" onclick="signInWithGoogleVris()">Google</button>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-        ${mode === 'register' ? '<button class="modal-btn secondary" onclick="skipCaptcha()">Пропустить капчу</button>' : ''}
-        <button class="modal-btn secondary" onclick="closeModal()">Закрыть</button>
-        <button class="modal-btn primary" onclick="submitCloudAuth('${mode}')">${mode === 'register' ? 'Создать аккаунт' : 'Войти'}</button>
-      </div>
+    <div class="modal-actions" style="margin-top:18px;justify-content:flex-end;">
+      <button class="modal-btn secondary" onclick="closeModal()">Закрыть</button>
+      <button class="modal-btn primary" onclick="submitCloudAuth('${mode}')">${mode === 'register' ? 'Создать аккаунт' : 'Войти'}</button>
     </div>`;
   document.getElementById('modal-overlay').classList.add('show');
-  window.__vrisCaptcha = { ...captcha, solved: false, skipped: false };
-}
-
-function pickCaptcha(index) {
-  const state = window.__vrisCaptcha;
-  if (!state) return;
-  state.solved = index === state.correctIndex;
-  state.skipped = false;
-  document.getElementById('captcha-status').textContent = state.solved ? 'Капча пройдена ✨' : 'Это не тот вариант 🙃 можно попробовать снова или пропустить';
-}
-
-function skipCaptcha() {
-  const state = window.__vrisCaptcha || {};
-  state.skipped = true;
-  window.__vrisCaptcha = state;
-  const el = document.getElementById('captcha-status');
-  if (el) el.textContent = 'Капча пропущена';
 }
 
 async function submitCloudAuth(mode) {
   const emailLike = document.getElementById('auth-email')?.value?.trim() || '';
   const password = document.getElementById('auth-password')?.value || '';
   const nickname = sanitizeNickname(document.getElementById('auth-nick')?.value || emailLike.split('@')[0] || 'Пользователь');
-  const captchaState = window.__vrisCaptcha || {};
-  if (mode === 'register' && !captchaState.solved && !captchaState.skipped) {
-    showToast('Сначала пройди капчу или пропусти её 🙂');
-    return;
-  }
   if (!emailLike || !password) {
     showToast('Заполни почту/ник и пароль 🙃');
     return;
@@ -2830,17 +2793,6 @@ async function submitCloudAuth(mode) {
   }
 }
 
-async function signInWithGoogleVris() {
-  try {
-    await signInWithPopup(auth, googleProvider);
-    closeModal();
-    showToast('Вход через Google выполнен ✨');
-  } catch (e) {
-    console.warn(e);
-    showToast('Не удалось войти через Google 🙃');
-  }
-}
-
 async function logoutCloud() {
   try {
     await signOut(auth);
@@ -2855,7 +2807,7 @@ function watchCloudPresence() {
   if (cloudChatsUnsub) cloudChatsUnsub();
   const ref = doc(db, 'users', currentUser.uid, 'private', 'state');
   cloudChatsUnsub = onSnapshot(ref, () => {
-    updateCloudStatus(getUserDisplayName(), 'Облако подключено и синхронизируется', 'online');
+    updateCloudStatus(getUserDisplayName(), 'Облако подключено', 'online');
   });
 }
 
@@ -2864,7 +2816,7 @@ function initCloudAuthWatcher() {
     currentUser = user || null;
     cloudSyncEnabled = !!user;
     if (user) {
-      updateCloudStatus(getUserDisplayName(user), user.email || 'Аккаунт подключён', 'syncing');
+      updateCloudStatus(getUserDisplayName(user), user.email || 'Аккаунт подключён', 'online');
       await restoreCloudData();
       await syncCloudData(true);
       watchCloudPresence();
@@ -3287,10 +3239,7 @@ const __inlineHandlers = {
   switchChat: typeof switchChat !== 'undefined' ? switchChat : undefined,
   deleteChat: typeof deleteChat !== 'undefined' ? deleteChat : undefined,
   openCloudAuthModal: typeof openCloudAuthModal !== 'undefined' ? openCloudAuthModal : undefined,
-  signInWithGoogleVris: typeof signInWithGoogleVris !== 'undefined' ? signInWithGoogleVris : undefined,
   submitCloudAuth: typeof submitCloudAuth !== 'undefined' ? submitCloudAuth : undefined,
-  pickCaptcha: typeof pickCaptcha !== 'undefined' ? pickCaptcha : undefined,
-  skipCaptcha: typeof skipCaptcha !== 'undefined' ? skipCaptcha : undefined,
   logoutCloud: typeof logoutCloud !== 'undefined' ? logoutCloud : undefined,
   openModelPicker: typeof openModelPicker !== 'undefined' ? openModelPicker : undefined,
   setTextModel: typeof setTextModel !== 'undefined' ? setTextModel : undefined,
