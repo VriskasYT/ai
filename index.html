@@ -1109,9 +1109,11 @@ const API_KEY = 'sk_OWjCd8R8RXqTPMsad5DEAWocW4FaYFbK';
 const API_BASE = 'https://gen.pollinations.ai';
 const APP_NAME = 'VrisAi';
 const STORAGE_PREFIX = 'vrisai_';
+const CLIENT_ID = localStorage.getItem(STORAGE_PREFIX + 'client_id') || ('client_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+localStorage.setItem(STORAGE_PREFIX + 'client_id', CLIENT_ID);
 
 let chats = JSON.parse(localStorage.getItem(STORAGE_PREFIX + 'chats') || localStorage.getItem('nexus_chats') || '[]');
-let currentChatId = null;
+let currentChatId = localStorage.getItem(STORAGE_PREFIX + 'current_chat_id') || null;
 let isGenerating = false;
 let abortController = null;
 let currentModel = localStorage.getItem(STORAGE_PREFIX + 'model') || localStorage.getItem('nexus_model') || 'openai';
@@ -1288,6 +1290,7 @@ function init() {
 
 function showWelcome() {
   currentChatId = null;
+  setLocalStorageCompat('current_chat_id', '');
   friendsInChat = [];
   renderChatList();
   const area = document.getElementById('chat-area');
@@ -1325,10 +1328,12 @@ function createNewChat() {
 function switchChat(id) {
   if (isGenerating) return;
   currentChatId = id;
+  setLocalStorageCompat('current_chat_id', currentChatId || '');
   const chat = getCurrentChat();
   friendsInChat = chat?.friends || [];
   renderChatList();
   renderChat();
+  scheduleCloudSync(150);
   toggleSidebar(false);
 }
 
@@ -1340,6 +1345,7 @@ function deleteChat(id, e) {
     currentChatId = nextChats[0]?.id || null;
     friendsInChat = nextChats[0]?.friends || [];
   }
+  setLocalStorageCompat('current_chat_id', currentChatId || '');
   saveChats();
   renderChatList();
   if (currentChatId) renderChat();
@@ -2808,6 +2814,8 @@ function buildCloudPayload() {
   localStorage.setItem(STORAGE_PREFIX + 'local_state_updated_at', String(lastLocalStateUpdatedAt));
   return {
     app: APP_NAME,
+    clientId: CLIENT_ID,
+    currentChatId: currentChatId || null,
     chats,
     memory,
     settings: {
