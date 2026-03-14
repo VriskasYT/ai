@@ -1955,7 +1955,12 @@ async function sendMessage(userText, userAttachments = []) {
   }
   const wasEmpty = chat.messages.length === 0;
 
-  const userMsg = { role: 'user', content: userText };
+  const userMsg = {
+    id: 'msg-' + Math.random().toString(36).slice(2, 10),
+    role: 'user',
+    content: userText,
+    createdAt: new Date().toISOString()
+  };
   if (userAttachments.length > 0) userMsg.attachments = userAttachments;
   chat.messages.push(userMsg);
 
@@ -2057,7 +2062,14 @@ async function streamAIResponse(chat, apiMessages, model, friendModel) {
   abortController = new AbortController();
   updateSendButton();
 
-  const assistantMsg = { role: 'assistant', content: '', friendModel: friendModel || undefined };
+  const assistantMsg = {
+    id: 'msg-' + Math.random().toString(36).slice(2, 10),
+    role: 'assistant',
+    content: '',
+    friendModel: friendModel || undefined,
+    createdAt: new Date().toISOString(),
+    streaming: true
+  };
   chat.messages.push(assistantMsg);
 
   const container = document.getElementById('messages-container') || document.getElementById('chat-area');
@@ -2122,19 +2134,28 @@ async function streamAIResponse(chat, apiMessages, model, friendModel) {
     }
 
     assistantMsg.content = fullText;
-    bubble.innerHTML = friendLabel + processAssistantContent(fullText);
+    assistantMsg.streaming = false;
+    bubble.innerHTML = friendLabel + processAssistantContent(fullText || '…');
     processPostRender(bubble);
     await waitForPendingMedia(30000);
+    saveChats();
 
   } catch (err) {
     if (err.name === 'AbortError') {
-      bubble.innerHTML = friendLabel + processAssistantContent(assistantMsg.content || '') +
+      assistantMsg.streaming = false;
+      bubble.innerHTML = friendLabel + processAssistantContent(assistantMsg.content || '…') +
         '<div style="color:var(--md-outline);font-size:13px;margin-top:8px;">⏹ Остановлено</div>';
     } else {
       const friendlyError = getFriendlyError(err.message);
       bubble.innerHTML = friendLabel + `<div class="error-block">😕 ${friendlyError}</div>`;
       assistantMsg.content = `[Ошибка: ${err.message}]`;
+      assistantMsg.streaming = false;
     }
+  }
+
+  if (!assistantMsg.content || !assistantMsg.content.trim()) {
+    assistantMsg.content = 'Извини, ответ почему-то не доехал 🙃 Попробуй отправить ещё раз.';
+    bubble.innerHTML = friendLabel + processAssistantContent(assistantMsg.content);
   }
 
   isGenerating = false;
@@ -2805,7 +2826,7 @@ function dedupeMessages(messages = []) {
   const seen = new Set();
   const out = [];
   for (const msg of messages) {
-    const key = JSON.stringify([
+    const key = msg.id || JSON.stringify([
       msg.role || '',
       msg.content || '',
       msg.createdAt || '',
@@ -3074,7 +3095,7 @@ function watchCloudPresence() {
       setLocalStorageCompat('chats', JSON.stringify(chats));
       if (changed) {
         renderChatList();
-        if (currentChatId) renderChat();
+        if (currentChatId && !isGenerating) renderChat();
       }
     }
     if (data.memory && typeof data.memory === 'object') {
