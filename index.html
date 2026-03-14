@@ -1087,8 +1087,8 @@ import {
   update,
   onValue,
   off,
-  serverTimestamp as rtdbServerTimestamp,
-  onDisconnect
+  onDisconnect,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
@@ -1289,8 +1289,6 @@ function init() {
 }
 
 function showWelcome() {
-  currentChatId = null;
-  setLocalStorageCompat('current_chat_id', '');
   friendsInChat = [];
   renderChatList();
   const area = document.getElementById('chat-area');
@@ -1389,6 +1387,7 @@ function saveChats() {
       }
     }
     setLocalStorageCompat('chats', data);
+    setLocalStorageCompat('current_chat_id', currentChatId || '');
     backupStateLocally();
     scheduleCloudSync(500);
   } catch(e) {
@@ -1623,39 +1622,44 @@ function processAssistantContent(content) {
   // Process model switch
   html = html.replace(/<SWITCH_MODEL model="([^"]*)">/g, (_, model) => {
     if (MODEL_NAMES[model]) {
-      currentModel = model;
-      localStorage.setItem('nexus_model', model);
-      updateModelDisplay();
+    currentModel = model;
+    setLocalStorageCompat('model', model);
+    updateModelDisplay();
+    scheduleCloudSync(150);
     }
     return `<div class="tool-call-block done"><div class="spinner"></div><span>🔄 Текстовая модель изменена на ${MODEL_NAMES[model] || model}</span></div>`;
   });
 
   html = html.replace(/<SWITCH_IMAGE_MODEL model="([^"]*)">/g, (_, model) => {
     currentImageModel = model || 'flux';
-    localStorage.setItem('nexus_image_model', currentImageModel);
+    setLocalStorageCompat('image_model', currentImageModel);
     updateModelDisplay();
+    scheduleCloudSync(150);
     return `<div class="tool-call-block done"><div class="spinner"></div><span>🖼️ Модель изображений: ${escapeHtml(currentImageModel)}</span></div>`;
   });
 
   html = html.replace(/<SWITCH_VIDEO_MODEL model="([^"]*)">/g, (_, model) => {
     currentVideoModel = model || 'ltx-2';
-    localStorage.setItem('nexus_video_model', currentVideoModel);
+    setLocalStorageCompat('video_model', currentVideoModel);
     updateModelDisplay();
+    scheduleCloudSync(150);
     return `<div class="tool-call-block done"><div class="spinner"></div><span>🎬 Модель видео: ${escapeHtml(currentVideoModel)}</span></div>`;
   });
 
   html = html.replace(/<SWITCH_MUSIC_MODEL model="([^"]*)">/g, (_, model) => {
     currentMusicModel = model || 'elevenmusic';
-    localStorage.setItem('nexus_music_model', currentMusicModel);
+    setLocalStorageCompat('music_model', currentMusicModel);
     updateModelDisplay();
+    scheduleCloudSync(150);
     return `<div class="tool-call-block done"><div class="spinner"></div><span>🎵 Модель музыки: ${escapeHtml(currentMusicModel)}</span></div>`;
   });
 
   // Process memory updates
   html = html.replace(/<MEMORY_UPDATE key="([^"]*)">([\s\S]*?)<\/MEMORY_UPDATE>/g, (_, key, value) => {
     memory[key] = value;
-    localStorage.setItem('nexus_memory', JSON.stringify(memory));
+    setLocalStorageCompat('memory', JSON.stringify(memory));
     updateMemoryCount();
+    scheduleCloudSync(150);
     return `<div class="memory-indicator"><span class="material-symbols-rounded">memory</span> Запомнено 💾</div>`;
   });
 
@@ -2743,10 +2747,10 @@ function openModelPicker() {
   document.getElementById('modal-overlay').classList.add('show');
 }
 
-function setTextModel(model) { currentModel = model; localStorage.setItem('nexus_model', model); updateModelDisplay(); }
-function setImageModel(model) { currentImageModel = model; localStorage.setItem('nexus_image_model', model); updateModelDisplay(); }
-function setVideoModel(model) { currentVideoModel = model; localStorage.setItem('nexus_video_model', model); updateModelDisplay(); }
-function setMusicModel(model) { currentMusicModel = model; localStorage.setItem('nexus_music_model', model); updateModelDisplay(); }
+function setTextModel(model) { currentModel = model; setLocalStorageCompat('model', model); updateModelDisplay(); scheduleCloudSync(150); }
+function setImageModel(model) { currentImageModel = model; setLocalStorageCompat('image_model', model); updateModelDisplay(); scheduleCloudSync(150); }
+function setVideoModel(model) { currentVideoModel = model; setLocalStorageCompat('video_model', model); updateModelDisplay(); scheduleCloudSync(150); }
+function setMusicModel(model) { currentMusicModel = model; setLocalStorageCompat('music_model', model); updateModelDisplay(); scheduleCloudSync(150); }
 
 function updateMemoryCount() {
   document.getElementById('memory-count').textContent = Object.keys(memory).length;
@@ -2816,8 +2820,8 @@ function buildCloudPayload() {
     app: APP_NAME,
     clientId: CLIENT_ID,
     currentChatId: currentChatId || null,
-    chats,
-    memory,
+    chats: chats.map(normalizeChatForMerge),
+    memory: { ...(memory || {}) },
     settings: {
       currentModel,
       currentImageModel,
@@ -2825,7 +2829,8 @@ function buildCloudPayload() {
       currentMusicModel,
       customKeyboardEnabled
     },
-    updatedAt: lastLocalStateUpdatedAt
+    updatedAt: lastLocalStateUpdatedAt,
+    lastWriter: CLIENT_ID
   };
 }
 
@@ -2835,6 +2840,67 @@ function getUserMetaRef(uid = currentUser?.uid) {
 
 function getUserStateRef(uid = currentUser?.uid) {
   return ref(rtdb, `users/${uid}/state`);
+}
+
+function applyCloudState(data = {}, options = {}) {
+  const { preferRemoteSelection = true } = options;
+  const remoteChats = Array.isArray(data.chats) ? data.chats : [];
+  chats = mergeChatsLists(chats, remoteChats);
+
+  if (data.memory && typeof data.memory === 'object') {
+    memory = { ...(memory || {}), ...(data.memory || {}) };
+  }
+
+  if (data.settings && typeof data.settings === 'object') {
+    currentModel = data.settings.currentModel || currentModel;
+    currentImageModel = data.settings.currentImageModel || currentImageModel;
+    currentVideoModel = data.settings.currentVideoModel || currentVideoModel;
+    currentMusicModel = data.settings.currentMusicModel || currentMusicModel;
+    customKeyboardEnabled = !!data.settings.customKeyboardEnabled;
+  }
+
+  const remoteCurrentChatId = data.currentChatId || null;
+  const hasRemoteCurrent = remoteCurrentChatId && chats.some(c => c.id === remoteCurrentChatId);
+  const hasLocalCurrent = currentChatId && chats.some(c => c.id === currentChatId);
+
+  if (preferRemoteSelection && hasRemoteCurrent) currentChatId = remoteCurrentChatId;
+  else if (!hasLocalCurrent) currentChatId = chats[0]?.id || null;
+
+  if (currentChatId) {
+    const activeChat = chats.find(c => c.id === currentChatId);
+    friendsInChat = activeChat?.friends || [];
+  } else {
+    friendsInChat = [];
+  }
+
+  setLocalStorageCompat('chats', JSON.stringify(chats));
+  setLocalStorageCompat('memory', JSON.stringify(memory));
+  setLocalStorageCompat('model', currentModel);
+  setLocalStorageCompat('image_model', currentImageModel);
+  setLocalStorageCompat('video_model', currentVideoModel);
+  setLocalStorageCompat('music_model', currentMusicModel);
+  setLocalStorageCompat('custom_keyboard', customKeyboardEnabled ? '1' : '0');
+  setLocalStorageCompat('current_chat_id', currentChatId || '');
+  updateMemoryCount();
+  updateModelDisplay();
+  renderChatList();
+  if (currentChatId && !isGenerating) renderChat();
+}
+
+async function writeCloudMeta(user = currentUser, extras = {}) {
+  if (!user) return;
+  await update(getUserMetaRef(user.uid), {
+    uid: user.uid,
+    nickname: user.displayName || '',
+    email: user.email || '',
+    app: APP_NAME,
+    clientId: CLIENT_ID,
+    online: true,
+    typing: false,
+    lastSeen: Date.now(),
+    updatedAt: Date.now(),
+    ...extras
+  });
 }
 
 function openLocalBackupDb() {
@@ -2976,51 +3042,47 @@ async function syncCloudData(force = false) {
   cloudSyncInProgress = true;
   clearTimeout(cloudRetryTimer);
   try {
-    const remoteSnap = await get(getUserStateRef());
-    const remote = remoteSnap.exists() ? (remoteSnap.val() || {}) : {};
-    const mergedChats = mergeChatsLists(chats, Array.isArray(remote.chats) ? remote.chats : []);
-    const mergedMemory = { ...(remote.memory || {}), ...(memory || {}) };
-    chats = mergedChats;
-    memory = mergedMemory;
-    const payload = {
-      app: APP_NAME,
-      chats: mergedChats,
-      memory: mergedMemory,
-      settings: {
-        ...(remote.settings || {}),
-        currentModel,
-        currentImageModel,
-        currentVideoModel,
-        currentMusicModel,
-        customKeyboardEnabled
-      },
-      updatedAt: Date.now()
-    };
-    lastLocalStateUpdatedAt = payload.updatedAt;
+    const stateRef = getUserStateRef();
+    const localPayload = buildCloudPayload();
+    await runTransaction(stateRef, (remote) => {
+      const remoteState = remote && typeof remote === 'object' ? remote : {};
+      const mergedChats = mergeChatsLists(localPayload.chats || [], Array.isArray(remoteState.chats) ? remoteState.chats : []);
+      const mergedMemory = { ...(remoteState.memory || {}), ...(localPayload.memory || {}) };
+      const remoteSettings = remoteState.settings && typeof remoteState.settings === 'object' ? remoteState.settings : {};
+      const mergedSettings = {
+        ...remoteSettings,
+        ...localPayload.settings
+      };
+      const remoteCurrentChatId = remoteState.currentChatId || null;
+      const currentChatIdToWrite = localPayload.currentChatId || remoteCurrentChatId || mergedChats[0]?.id || null;
+      const nextUpdatedAt = Date.now();
+      return {
+        app: APP_NAME,
+        clientId: CLIENT_ID,
+        lastWriter: CLIENT_ID,
+        currentChatId: currentChatIdToWrite,
+        chats: mergedChats,
+        memory: mergedMemory,
+        settings: mergedSettings,
+        updatedAt: nextUpdatedAt
+      };
+    }, { applyLocally: true });
+
+    const fresh = await get(stateRef);
+    const data = fresh.exists() ? (fresh.val() || {}) : localPayload;
+    lastLocalStateUpdatedAt = Number(data.updatedAt || Date.now());
     localStorage.setItem(STORAGE_PREFIX + 'local_state_updated_at', String(lastLocalStateUpdatedAt));
-    await update(getUserMetaRef(), {
-      uid: currentUser.uid,
-      nickname: currentUser.displayName || '',
-      email: currentUser.email || '',
-      app: APP_NAME,
-      online: true,
-      typing: false,
-      lastSeen: Date.now(),
-      updatedAt: Date.now()
-    });
-    await set(getUserStateRef(), payload);
-    setLocalStorageCompat('chats', JSON.stringify(chats));
-    setLocalStorageCompat('memory', JSON.stringify(memory));
-    await idbSet('latest_state', payload);
+    applyCloudState(data, { preferRemoteSelection: true });
+    await writeCloudMeta(currentUser, { online: true, typing: false });
+    await idbSet('latest_state', data);
     pendingCloudSyncLocal = false;
     updateCloudStatus(getUserDisplayName(), 'Чаты синхронизированы', 'online');
-    renderChatList();
-    if (currentChatId) renderChat();
   } catch (e) {
-    console.warn('Cloud sync failed', e);
+    console.warn('RTDB sync failed', e);
     pendingCloudSyncLocal = true;
+    await backupStateLocally();
     updateCloudStatus(getUserDisplayName(), 'Облако временно недоступно — локальная копия сохранена', 'offline');
-    cloudRetryTimer = setTimeout(() => syncCloudData(true), 3500);
+    cloudRetryTimer = setTimeout(() => syncCloudData(true), 2500);
   }
   cloudSyncInProgress = false;
 }
@@ -3030,35 +3092,18 @@ async function restoreCloudData() {
   try {
     await restoreIndexedBackupIfNeeded();
     const snap = await get(getUserStateRef());
-    if (!snap.exists()) {
+    if (snap.exists()) {
+      const data = snap.val() || {};
+      lastLocalStateUpdatedAt = Number(data.updatedAt || lastLocalStateUpdatedAt || Date.now());
+      localStorage.setItem(STORAGE_PREFIX + 'local_state_updated_at', String(lastLocalStateUpdatedAt));
+      applyCloudState(data, { preferRemoteSelection: true });
+      await idbSet('latest_state', data);
+      updateCloudStatus(getUserDisplayName(), 'Чаты загружены из облака', 'online');
+    } else {
       await syncCloudData(true);
-      return;
     }
-    const data = snap.val() || {};
-    chats = mergeChatsLists(chats, Array.isArray(data.chats) ? data.chats : []);
-    if (data.memory && typeof data.memory === 'object') memory = { ...data.memory, ...memory };
-    if (data.settings) {
-      currentModel = data.settings.currentModel || currentModel;
-      currentImageModel = data.settings.currentImageModel || currentImageModel;
-      currentVideoModel = data.settings.currentVideoModel || currentVideoModel;
-      currentMusicModel = data.settings.currentMusicModel || currentMusicModel;
-      customKeyboardEnabled = !!data.settings.customKeyboardEnabled;
-    }
-    setLocalStorageCompat('chats', JSON.stringify(chats));
-    setLocalStorageCompat('memory', JSON.stringify(memory));
-    setLocalStorageCompat('model', currentModel);
-    setLocalStorageCompat('image_model', currentImageModel);
-    setLocalStorageCompat('video_model', currentVideoModel);
-    setLocalStorageCompat('music_model', currentMusicModel);
-    setLocalStorageCompat('custom_keyboard', customKeyboardEnabled ? '1' : '0');
-    await idbSet('latest_state', buildCloudPayload());
-    renderChatList();
-    if (currentChatId) renderChat();
-    updateMemoryCount();
-    updateModelDisplay();
-    updateCloudStatus(getUserDisplayName(), 'Чаты загружены и объединены', 'online');
   } catch (e) {
-    console.warn('Cloud restore failed', e);
+    console.warn('RTDB restore failed', e);
     await restoreIndexedBackupIfNeeded();
     renderChatList();
     if (currentChatId) renderChat();
@@ -3073,14 +3118,14 @@ function sanitizeNickname(nick) {
 async function openCloudAuthModal(mode = 'login') {
   document.getElementById('modal-content').innerHTML = `
     <h3>Облако VrisAi</h3>
-    <p>Войти необязательно — но так можно сохранить переписки, память и настройки в Firebase и перенести их между устройствами ☁️</p>
+    <p>Войти необязательно — но так можно хранить переписки, память и настройки в Firebase Realtime Database ☁️</p>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <button class="modal-btn ${mode === 'login' ? 'primary' : 'secondary'}" onclick="openCloudAuthModal('login')">Вход</button>
       <button class="modal-btn ${mode === 'register' ? 'primary' : 'secondary'}" onclick="openCloudAuthModal('register')">Регистрация</button>
     </div>
     <div style="display:grid;gap:10px;">
       ${mode === 'register' ? '<input id="auth-nick" class="ai-kbd-ai-input" placeholder="Ник">' : ''}
-      <input id="auth-email" class="ai-kbd-ai-input" placeholder="Почта или ник" value="">
+      <input id="auth-email" class="ai-kbd-ai-input" placeholder="Почта или ник">
       <input id="auth-password" class="ai-kbd-ai-input" type="password" placeholder="Пароль">
     </div>
     <div class="modal-actions" style="margin-top:18px;justify-content:flex-end;">
@@ -3133,41 +3178,29 @@ async function logoutCloud() {
 function watchCloudPresence() {
   if (!currentUser) return;
   if (cloudChatsUnsub) {
-    try { off(getUserStateRef(), 'value', cloudChatsUnsub); } catch {}
+    try { off(getUserStateRef(currentUser.uid), 'value', cloudChatsUnsub); } catch {}
     cloudChatsUnsub = null;
   }
-  const stateRef = getUserStateRef();
+  const stateRef = getUserStateRef(currentUser.uid);
   const handler = snapshot => {
-    const data = snapshot.val() || {};
+    const data = snapshot.val();
+    if (!data || typeof data !== 'object') return;
     const remoteUpdatedAt = Number(data.updatedAt || 0);
     const localUpdatedAt = Number(lastLocalStateUpdatedAt || 0);
-    const shouldMergeRemote = remoteUpdatedAt >= localUpdatedAt || !pendingCloudSyncLocal;
-    if (shouldMergeRemote && Array.isArray(data.chats)) {
-      const merged = mergeChatsLists(chats, data.chats);
-      const changed = JSON.stringify(merged) !== JSON.stringify(chats);
-      chats = merged;
-      setLocalStorageCompat('chats', JSON.stringify(chats));
-      if (changed) {
-        renderChatList();
-        if (currentChatId && !isGenerating) renderChat();
-      }
-    }
-    if (shouldMergeRemote && data.memory && typeof data.memory === 'object') {
-      memory = { ...data.memory, ...memory };
-      setLocalStorageCompat('memory', JSON.stringify(memory));
-      updateMemoryCount();
-    }
-    if (shouldMergeRemote && data.settings) {
-      currentModel = data.settings.currentModel || currentModel;
-      currentImageModel = data.settings.currentImageModel || currentImageModel;
-      currentVideoModel = data.settings.currentVideoModel || currentVideoModel;
-      currentMusicModel = data.settings.currentMusicModel || currentMusicModel;
-      customKeyboardEnabled = !!data.settings.customKeyboardEnabled;
-      updateModelDisplay();
-    }
-    updateCloudStatus(getUserDisplayName(), pendingCloudSyncLocal ? 'Локальные изменения ждут отправки' : 'Облако подключено', pendingCloudSyncLocal ? 'syncing' : 'online');
+    const remoteFromOtherClient = data.lastWriter && data.lastWriter !== CLIENT_ID;
+    const shouldApply = remoteUpdatedAt > localUpdatedAt || remoteFromOtherClient || !pendingCloudSyncLocal;
+    if (!shouldApply) return;
+    lastLocalStateUpdatedAt = Math.max(localUpdatedAt, remoteUpdatedAt);
+    localStorage.setItem(STORAGE_PREFIX + 'local_state_updated_at', String(lastLocalStateUpdatedAt));
+    applyCloudState(data, { preferRemoteSelection: true });
+    idbSet('latest_state', data);
+    pendingCloudSyncLocal = false;
+    updateCloudStatus(getUserDisplayName(), 'Облако подключено', 'online');
   };
-  onValue(stateRef, handler);
+  onValue(stateRef, handler, (error) => {
+    console.warn('RTDB listener failed', error);
+    updateCloudStatus(getUserDisplayName(), 'Не удалось слушать облако — работаю локально', 'offline');
+  });
   cloudChatsUnsub = handler;
 }
 
@@ -3175,10 +3208,10 @@ function reportTypingState(isTyping) {
   if (!currentUser) return;
   const metaRef = getUserMetaRef(currentUser.uid);
   clearTimeout(typingResetTimer);
-  update(metaRef, { typing: !!isTyping, lastSeen: Date.now(), updatedAt: Date.now() }).catch(() => {});
+  update(metaRef, { typing: !!isTyping, lastSeen: Date.now(), updatedAt: Date.now(), clientId: CLIENT_ID }).catch(() => {});
   if (isTyping) {
     typingResetTimer = setTimeout(() => {
-      update(metaRef, { typing: false, lastSeen: Date.now(), updatedAt: Date.now() }).catch(() => {});
+      update(metaRef, { typing: false, lastSeen: Date.now(), updatedAt: Date.now(), clientId: CLIENT_ID }).catch(() => {});
     }, 2500);
   }
 }
@@ -3188,25 +3221,16 @@ async function setupRealtimePresence(user) {
   try {
     const metaRef = getUserMetaRef(user.uid);
     const connectedRef = ref(rtdb, '.info/connected');
-    onValue(connectedRef, async snap => {
-      if (snap.val() === false) return;
+    onValue(connectedRef, async (snap) => {
+      if (snap.val() !== true) return;
       try {
-        await onDisconnect(metaRef).update({ online: false, typing: false, lastSeen: Date.now(), updatedAt: Date.now() });
-        await update(metaRef, {
-          uid: user.uid,
-          nickname: user.displayName || '',
-          email: user.email || '',
-          app: APP_NAME,
-          online: true,
-          typing: false,
-          lastSeen: Date.now(),
-          updatedAt: Date.now()
-        });
-      } catch(e) {
+        onDisconnect(metaRef).update({ online: false, typing: false, lastSeen: Date.now(), updatedAt: Date.now(), clientId: CLIENT_ID });
+        await writeCloudMeta(user, { online: true, typing: false });
+      } catch (e) {
         console.warn('Presence setup failed', e);
       }
     });
-  } catch(e) {
+  } catch (e) {
     console.warn('Realtime presence failed', e);
   }
 }
@@ -3217,7 +3241,7 @@ function initCloudAuthWatcher() {
     cloudSyncEnabled = !!user;
     clearTimeout(cloudRetryTimer);
     if (user) {
-      updateCloudStatus(getUserDisplayName(user), user.email || 'Аккаунт подключён', 'online');
+      updateCloudStatus(getUserDisplayName(user), user.email || 'Аккаунт подключён', 'syncing');
       await restoreCloudData();
       await setupRealtimePresence(user);
       watchCloudPresence();
@@ -3693,7 +3717,7 @@ for (const [name, fn] of Object.entries(__inlineHandlers)) {
 init();
 initCloudAuthWatcher();
 syncMobileViewport();
-window.VrisAi = { version: 'vrisai-hotfix-inline-handlers-1' };
+window.VrisAi = { version: 'vrisai-rtdb-rewrite-1' };
 window.NexusAI = window.VrisAi;
 </script>
 </body>
