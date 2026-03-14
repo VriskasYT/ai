@@ -1129,6 +1129,13 @@ let cloudSyncEnabled = false;
 let cloudSyncInProgress = false;
 let cloudPresenceUnsub = null;
 let cloudChatsUnsub = null;
+let cloudSyncTimer = null;
+let cloudRetryTimer = null;
+let pendingCloudSyncLocal = false;
+let lastLocalStateUpdatedAt = Number(localStorage.getItem(STORAGE_PREFIX + 'local_state_updated_at') || 0);
+let typingResetTimer = null;
+const LOCAL_DB_NAME = 'vrisai_local_backup';
+const LOCAL_DB_STORE = 'kv';
 
 const MODEL_NAMES = {
   'openai': 'GPT-5 Mini', 'openai-fast': 'GPT-5 Nano', 'openai-large': 'GPT-5.2',
@@ -1230,16 +1237,26 @@ function init() {
   updateModelDisplay();
   updateMemoryCount();
   initCustomKeyboard();
+  restoreIndexedBackupIfNeeded().then(() => {
+    renderChatList();
+    updateMemoryCount();
+    updateModelDisplay();
+  });
   const composer = document.getElementById('msg-input');
   const proxy = document.getElementById('msg-input-proxy');
   composer.addEventListener('input', () => {
     syncProxyFromComposer();
     document.getElementById('send-btn').disabled = !document.getElementById('msg-input').value.trim() && attachments.length === 0;
+    reportTypingState(!!composer.value.trim());
   });
-  proxy.addEventListener('input', syncComposerFromProxy);
+  proxy.addEventListener('input', () => {
+    syncComposerFromProxy();
+    reportTypingState(!!proxy.value.trim());
+  });
   composer.addEventListener('focus', handleComposerFocus, { passive: false });
   composer.addEventListener('pointerdown', interceptComposerPointer, { passive: false });
   composer.addEventListener('touchstart', interceptComposerPointer, { passive: false });
+  composer.addEventListener('blur', () => reportTypingState(false));
 }
 
 function showWelcome() {
@@ -1302,9 +1319,11 @@ function getCurrentChat() { return chats.find(c => c.id === currentChatId); }
 
 function saveChats() {
   try {
+    markChatsUpdated();
     const saveable = chats.map(c => ({
       ...c,
-      messages: c.messages.map(m => {
+      updatedAt: Number(c.updatedAt || Date.now()),
+      messages: (Array.isArray(c.messages) ? c.messages : []).map(m => {
         if (m.attachments) {
           return {
             ...m,
@@ -1323,16 +1342,27 @@ function saveChats() {
         return m;
       })
     }));
-    const data = JSON.stringify(saveable);
+    chats = saveable;
+    let data = JSON.stringify(saveable);
     if (data.length > 4500000) {
-      while (chats.length > 5 && JSON.stringify(chats).length > 4500000) chats.pop();
+      while (chats.length > 5 && data.length > 4500000) {
+        chats.pop();
+        data = JSON.stringify(chats);
+      }
     }
-    setLocalStorageCompat('chats', JSON.stringify(saveable));
-    if (cloudSyncEnabled) syncCloudData();
+    setLocalStorageCompat('chats', data);
+    backupStateLocally();
+    scheduleCloudSync(500);
   } catch(e) {
-    console.warn('Storage full, trimming');
+    console.warn('Storage full, trimming', e);
     while (chats.length > 3) chats.pop();
-    try { localStorage.setItem('nexus_chats', JSON.stringify(chats)); } catch(e2) {}
+    try {
+      const data = JSON.stringify(chats);
+      setLocalStorageCompat('chats', data);
+      backupStateLocally();
+    } catch(e2) {
+      console.warn('Emergency local save failed', e2);
+    }
   }
 }
 
@@ -1950,6 +1980,7 @@ async function sendMessage(userText, userAttachments = []) {
   if (userDiv.firstElementChild) container.appendChild(userDiv.firstElementChild);
   
   shouldAutoScroll = true;
+  reportTypingState(false);
   scrollToBottom();
 
   // Build API messages
@@ -2700,6 +2731,9 @@ function updateCloudStatus(label, meta, state = 'offline') {
 }
 
 function buildCloudPayload() {
+  const updatedAt = Date.now();
+  lastLocalStateUpdatedAt = Math.max(lastLocalStateUpdatedAt, updatedAt);
+  localStorage.setItem(STORAGE_PREFIX + 'local_state_updated_at', String(lastLocalStateUpdatedAt));
   return {
     app: APP_NAME,
     chats,
@@ -2711,7 +2745,7 @@ function buildCloudPayload() {
       currentMusicModel,
       customKeyboardEnabled
     },
-    updatedAt: Date.now()
+    updatedAt: lastLocalStateUpdatedAt
   };
 }
 
@@ -2723,11 +2757,175 @@ function getUserStateRef(uid = currentUser?.uid) {
   return ref(rtdb, `users/${uid}/state`);
 }
 
+function openLocalBackupDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(LOCAL_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(LOCAL_DB_STORE)) db.createObjectStore(LOCAL_DB_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, value) {
+  try {
+    const db = await openLocalBackupDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(LOCAL_DB_STORE, 'readwrite');
+      tx.objectStore(LOCAL_DB_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (e) {
+    console.warn('IndexedDB set failed', e);
+  }
+}
+
+async function idbGet(key) {
+  try {
+    const db = await openLocalBackupDb();
+    const result = await new Promise((resolve, reject) => {
+      const tx = db.transaction(LOCAL_DB_STORE, 'readonly');
+      const req = tx.objectStore(LOCAL_DB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return result;
+  } catch (e) {
+    console.warn('IndexedDB get failed', e);
+    return null;
+  }
+}
+
+function dedupeMessages(messages = []) {
+  const seen = new Set();
+  const out = [];
+  for (const msg of messages) {
+    const key = JSON.stringify([
+      msg.role || '',
+      msg.content || '',
+      msg.createdAt || '',
+      msg.by || '',
+      !!msg.pendingAdmin,
+      msg.friendModel || ''
+    ]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(msg);
+  }
+  return out.sort((a, b) => Number(new Date(a.createdAt || 0)) - Number(new Date(b.createdAt || 0)));
+}
+
+function normalizeChatForMerge(chat = {}) {
+  return {
+    id: chat.id || Date.now().toString(),
+    title: chat.title || 'Новый чат',
+    messages: dedupeMessages(Array.isArray(chat.messages) ? chat.messages : []),
+    created: Number(chat.created || Date.now()),
+    updatedAt: Number(chat.updatedAt || chat.created || Date.now()),
+    friends: Array.isArray(chat.friends) ? chat.friends : [],
+    prankFlags: chat.prankFlags || {},
+    manualMode: !!chat.manualMode,
+    manualPending: !!chat.manualPending,
+    politeMode: !!chat.politeMode,
+    adminIntervened: !!chat.adminIntervened
+  };
+}
+
+function mergeChatsLists(localChats = [], remoteChats = []) {
+  const map = new Map();
+  for (const chat of [...remoteChats, ...localChats]) {
+    const normalized = normalizeChatForMerge(chat);
+    const existing = map.get(normalized.id);
+    if (!existing) {
+      map.set(normalized.id, normalized);
+      continue;
+    }
+    const mergedMessages = dedupeMessages([...(existing.messages || []), ...(normalized.messages || [])]);
+    const merged = {
+      ...existing,
+      ...normalized,
+      title: normalized.updatedAt >= existing.updatedAt ? normalized.title : existing.title,
+      created: Math.min(existing.created || Date.now(), normalized.created || Date.now()),
+      updatedAt: Math.max(existing.updatedAt || 0, normalized.updatedAt || 0, ...mergedMessages.map(m => Number(new Date(m.createdAt || 0)) || 0)),
+      friends: Array.from(new Set([...(existing.friends || []), ...(normalized.friends || [])])),
+      prankFlags: { ...(existing.prankFlags || {}), ...(normalized.prankFlags || {}) },
+      manualMode: !!(existing.manualMode || normalized.manualMode),
+      manualPending: !!(existing.manualPending || normalized.manualPending),
+      politeMode: !!(existing.politeMode || normalized.politeMode),
+      adminIntervened: !!(existing.adminIntervened || normalized.adminIntervened),
+      messages: mergedMessages
+    };
+    map.set(merged.id, merged);
+  }
+  return [...map.values()].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+}
+
+function markChatsUpdated() {
+  const now = Date.now();
+  lastLocalStateUpdatedAt = now;
+  localStorage.setItem(STORAGE_PREFIX + 'local_state_updated_at', String(now));
+  chats = chats.map(chat => ({ ...chat, updatedAt: Math.max(Number(chat.updatedAt || 0), now) }));
+}
+
+function scheduleCloudSync(delay = 600) {
+  if (!cloudSyncEnabled || !currentUser) return;
+  pendingCloudSyncLocal = true;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(() => syncCloudData(), delay);
+}
+
+async function backupStateLocally() {
+  const payload = buildCloudPayload();
+  await idbSet('latest_state', payload);
+}
+
+async function restoreIndexedBackupIfNeeded() {
+  const backup = await idbGet('latest_state');
+  if (!backup) return;
+  if (Array.isArray(backup.chats) && backup.chats.length) chats = mergeChatsLists(chats, backup.chats);
+  if (backup.memory && typeof backup.memory === 'object') memory = { ...backup.memory, ...memory };
+  if (backup.settings) {
+    currentModel = backup.settings.currentModel || currentModel;
+    currentImageModel = backup.settings.currentImageModel || currentImageModel;
+    currentVideoModel = backup.settings.currentVideoModel || currentVideoModel;
+    currentMusicModel = backup.settings.currentMusicModel || currentMusicModel;
+    customKeyboardEnabled = !!backup.settings.customKeyboardEnabled;
+  }
+}
+
 async function syncCloudData(force = false) {
   if (!currentUser) return;
   if (cloudSyncInProgress && !force) return;
   cloudSyncInProgress = true;
+  clearTimeout(cloudRetryTimer);
   try {
+    const remoteSnap = await get(getUserStateRef());
+    const remote = remoteSnap.exists() ? (remoteSnap.val() || {}) : {};
+    const mergedChats = mergeChatsLists(chats, Array.isArray(remote.chats) ? remote.chats : []);
+    const mergedMemory = { ...(remote.memory || {}), ...(memory || {}) };
+    chats = mergedChats;
+    memory = mergedMemory;
+    const payload = {
+      app: APP_NAME,
+      chats: mergedChats,
+      memory: mergedMemory,
+      settings: {
+        ...(remote.settings || {}),
+        currentModel,
+        currentImageModel,
+        currentVideoModel,
+        currentMusicModel,
+        customKeyboardEnabled
+      },
+      updatedAt: Date.now()
+    };
+    lastLocalStateUpdatedAt = payload.updatedAt;
+    localStorage.setItem(STORAGE_PREFIX + 'local_state_updated_at', String(lastLocalStateUpdatedAt));
     await update(getUserMetaRef(), {
       uid: currentUser.uid,
       nickname: currentUser.displayName || '',
@@ -2738,11 +2936,19 @@ async function syncCloudData(force = false) {
       lastSeen: Date.now(),
       updatedAt: Date.now()
     });
-    await set(getUserStateRef(), buildCloudPayload());
-    updateCloudStatus(getUserDisplayName(), 'Облако подключено', 'online');
+    await set(getUserStateRef(), payload);
+    setLocalStorageCompat('chats', JSON.stringify(chats));
+    setLocalStorageCompat('memory', JSON.stringify(memory));
+    await idbSet('latest_state', payload);
+    pendingCloudSyncLocal = false;
+    updateCloudStatus(getUserDisplayName(), 'Чаты синхронизированы', 'online');
+    renderChatList();
+    if (currentChatId) renderChat();
   } catch (e) {
     console.warn('Cloud sync failed', e);
-    updateCloudStatus(getUserDisplayName(), 'Не удалось сохранить в облако 🙃', 'offline');
+    pendingCloudSyncLocal = true;
+    updateCloudStatus(getUserDisplayName(), 'Облако временно недоступно — локальная копия сохранена', 'offline');
+    cloudRetryTimer = setTimeout(() => syncCloudData(true), 3500);
   }
   cloudSyncInProgress = false;
 }
@@ -2750,14 +2956,15 @@ async function syncCloudData(force = false) {
 async function restoreCloudData() {
   if (!currentUser) return;
   try {
+    await restoreIndexedBackupIfNeeded();
     const snap = await get(getUserStateRef());
     if (!snap.exists()) {
       await syncCloudData(true);
       return;
     }
     const data = snap.val() || {};
-    if (Array.isArray(data.chats) && data.chats.length) chats = data.chats;
-    if (data.memory && typeof data.memory === 'object') memory = data.memory;
+    chats = mergeChatsLists(chats, Array.isArray(data.chats) ? data.chats : []);
+    if (data.memory && typeof data.memory === 'object') memory = { ...data.memory, ...memory };
     if (data.settings) {
       currentModel = data.settings.currentModel || currentModel;
       currentImageModel = data.settings.currentImageModel || currentImageModel;
@@ -2772,13 +2979,18 @@ async function restoreCloudData() {
     setLocalStorageCompat('video_model', currentVideoModel);
     setLocalStorageCompat('music_model', currentMusicModel);
     setLocalStorageCompat('custom_keyboard', customKeyboardEnabled ? '1' : '0');
+    await idbSet('latest_state', buildCloudPayload());
     renderChatList();
+    if (currentChatId) renderChat();
     updateMemoryCount();
     updateModelDisplay();
-    updateCloudStatus(getUserDisplayName(), 'Данные загружены из облака', 'online');
+    updateCloudStatus(getUserDisplayName(), 'Чаты загружены и объединены', 'online');
   } catch (e) {
     console.warn('Cloud restore failed', e);
-    updateCloudStatus(getUserDisplayName(), 'Не удалось загрузить облачные данные 🙃', 'offline');
+    await restoreIndexedBackupIfNeeded();
+    renderChatList();
+    if (currentChatId) renderChat();
+    updateCloudStatus(getUserDisplayName(), 'Облако не ответило — восстановлена локальная копия', 'offline');
   }
 }
 
@@ -2836,6 +3048,9 @@ async function submitCloudAuth(mode) {
 
 async function logoutCloud() {
   try {
+    if (currentUser) {
+      await update(getUserMetaRef(currentUser.uid), { online: false, typing: false, lastSeen: Date.now(), updatedAt: Date.now() }).catch(() => {});
+    }
     await signOut(auth);
     showToast('Облачный аккаунт отключён');
   } catch {
@@ -2853,13 +3068,17 @@ function watchCloudPresence() {
   const handler = snapshot => {
     const data = snapshot.val() || {};
     if (Array.isArray(data.chats)) {
-      chats = data.chats;
+      const merged = mergeChatsLists(chats, data.chats);
+      const changed = JSON.stringify(merged) !== JSON.stringify(chats);
+      chats = merged;
       setLocalStorageCompat('chats', JSON.stringify(chats));
-      renderChatList();
-      if (currentChatId) renderChat();
+      if (changed) {
+        renderChatList();
+        if (currentChatId) renderChat();
+      }
     }
     if (data.memory && typeof data.memory === 'object') {
-      memory = data.memory;
+      memory = { ...data.memory, ...memory };
       setLocalStorageCompat('memory', JSON.stringify(memory));
       updateMemoryCount();
     }
@@ -2871,10 +3090,22 @@ function watchCloudPresence() {
       customKeyboardEnabled = !!data.settings.customKeyboardEnabled;
       updateModelDisplay();
     }
-    updateCloudStatus(getUserDisplayName(), 'Облако подключено', 'online');
+    updateCloudStatus(getUserDisplayName(), pendingCloudSyncLocal ? 'Локальные изменения ждут отправки' : 'Облако подключено', pendingCloudSyncLocal ? 'syncing' : 'online');
   };
   onValue(stateRef, handler);
   cloudChatsUnsub = handler;
+}
+
+function reportTypingState(isTyping) {
+  if (!currentUser) return;
+  const metaRef = getUserMetaRef(currentUser.uid);
+  clearTimeout(typingResetTimer);
+  update(metaRef, { typing: !!isTyping, lastSeen: Date.now(), updatedAt: Date.now() }).catch(() => {});
+  if (isTyping) {
+    typingResetTimer = setTimeout(() => {
+      update(metaRef, { typing: false, lastSeen: Date.now(), updatedAt: Date.now() }).catch(() => {});
+    }, 2500);
+  }
 }
 
 async function setupRealtimePresence(user) {
@@ -2899,7 +3130,7 @@ async function setupRealtimePresence(user) {
       } catch(e) {
         console.warn('Presence setup failed', e);
       }
-    }, { onlyOnce: true });
+    });
   } catch(e) {
     console.warn('Realtime presence failed', e);
   }
@@ -2909,14 +3140,16 @@ function initCloudAuthWatcher() {
   onAuthStateChanged(auth, async (user) => {
     currentUser = user || null;
     cloudSyncEnabled = !!user;
+    clearTimeout(cloudRetryTimer);
     if (user) {
       updateCloudStatus(getUserDisplayName(user), user.email || 'Аккаунт подключён', 'online');
       await restoreCloudData();
-      await syncCloudData(true);
       await setupRealtimePresence(user);
       watchCloudPresence();
+      await syncCloudData(true);
     } else {
-      updateCloudStatus('Локальный режим', 'Данные пока только на устройстве', 'offline');
+      pendingCloudSyncLocal = false;
+      updateCloudStatus('Локальный режим', 'Данные надёжно сохранены на устройстве', 'offline');
       if (cloudChatsUnsub) {
         try { off(getUserStateRef(), 'value', cloudChatsUnsub); } catch {}
         cloudChatsUnsub = null;
