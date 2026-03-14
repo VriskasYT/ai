@@ -1218,11 +1218,37 @@ const SYSTEM_PROMPT = `Ты — настоящая нейросеть модел
 
 15. **Вложения надо понимать по-человечески**: если пользователь прислал фото/видео/музыку без явной просьбы «проанализируй», не надо навязывать анализ. Воспринимай содержимое как часть его сообщения. Если на изображении есть текст — это, возможно, просто фраза пользователя к тебе. Если в видео показано действие — отвечай на смысл увиденного, а не сухим анализом. Если в музыке нет слов — учитывай настроение, энергию, жанровое ощущение и атмосферу.
 
-16. **После генерации медиа не молчи**: если ты использовала <GEN_IMAGE>, <GEN_VIDEO> или <GEN_MUSIC>, то СРАЗУ ПОСЛЕ тега добавь короткую живую подпись 1-2 предложения: что получилось, какое настроение/образ вышел, или что пользователь сейчас видит/слышит. Пример: <GEN_IMAGE prompt="orange cat in a library">\nВот, получился уютный рыжий котик среди книг 🐈📚
+16. **Медиа без генерации тоже можно присылать**:
+   - <SEND_IMAGE url="https://..." caption="подпись">
+   - <SEND_VIDEO url="https://..." caption="подпись">
+   - <SEND_AUDIO url="https://..." caption="подпись">
+   Если пользователь просто просит показать/прислать медиа, не обязательно генерировать — можно отправить готовый файл по URL.
 
-17. **Кастомная клавиатура**: если пользователь просит «добавь кастомную клавиатуру», «включи клавиатуру с ИИ» или похожее — используй тег <CUSTOM_KEYBOARD mode="enable">. Если просит убрать — <CUSTOM_KEYBOARD mode="disable">.
+17. **Редактирование фотографий**: если пользователь просит изменить уже присланное фото, используй тег:
+   <EDIT_IMAGE prompt="english edit request" image="URL_ИЛИ_DATA_URL">
+   Если пользователь прикрепил картинку, можешь использовать её как источник для редактирования.
 
-18. **Ошибки**: Объясняй дружелюбно, не показывай технические детали. Добавь эмодзи 🙃
+18. **Культурный режим**: если пользователь просит включить культурный режим, используй <POLITE_MODE state="on">. Если просит выключить — <POLITE_MODE state="off">. В культурном режиме отвечай особенно вежливо и мягко 😊
+
+19. **После генерации медиа не делай вид, что всё уже готово**: не пиши финальную фразу вроде «готово» или «вот что получилось» раньше времени. После тегов <GEN_IMAGE>, <GEN_VIDEO>, <GEN_MUSIC> можно написать только нейтральное ожидание вроде «Запускаю генерацию ✨». Финальная подпись появится автоматически только после фактической загрузки результата.
+
+20. **Кастомная клавиатура**: если пользователь просит «добавь кастомную клавиатуру», «включи клавиатуру с ИИ» или похожее — используй тег <CUSTOM_KEYBOARD mode="enable">. Если просит убрать — <CUSTOM_KEYBOARD mode="disable">.
+
+21. **Код и tool-подобные действия**: когда пользователь просит про код, ты можешь использовать служебные теги:
+   - <GENERATE_CODE language="html" title="Название">...</GENERATE_CODE>
+   - <TOOL_CALL name="create_file" file="index.html"></TOOL_CALL>
+   - <TOOL_CALL name="read_file" file="app.js"></TOOL_CALL>
+   - <TOOL_CALL name="delete_file" file="old.txt"></TOOL_CALL>
+   - <TOOL_CALL name="rename_file" from="a.txt" to="b.txt"></TOOL_CALL>
+   - <TOOL_CALL name="create_folder" folder="assets"></TOOL_CALL>
+   - <TOOL_CALL name="install_package" package="react"></TOOL_CALL>
+   - <TOOL_CALL name="run_command" command="npm run build"></TOOL_CALL>
+   - <TOOL_CALL name="analyze_project"></TOOL_CALL>
+   - <TOOL_CALL name="write_tests" file="app.test.js"></TOOL_CALL>
+   - <TOOL_CALL name="refactor_code" file="main.js"></TOOL_CALL>
+   Используй их уверенно, но не показывай сырые теги как текст.
+
+22. **Ошибки**: Объясняй дружелюбно, не показывай технические детали. Добавь эмодзи 🙃
 
 Текущая дата: ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
 Текущая модель: {MODEL}.
@@ -1283,15 +1309,13 @@ function showWelcome() {
 
 // ===== CHAT MANAGEMENT =====
 function createNewChat() {
-  const chat = { id: Date.now().toString(), title: 'Новый чат', messages: [], created: Date.now(), friends: [] };
-  chats.unshift(chat);
+  const chat = { id: Date.now().toString(), title: 'Новый чат', messages: [], created: Date.now(), updatedAt: Date.now(), friends: [], politeMode: false };
+  chats = [chat, ...chats.filter(c => c.id !== chat.id)];
   currentChatId = chat.id;
   friendsInChat = [];
   saveChats();
   renderChatList();
-  showWelcome();
-  currentChatId = chat.id;
-  renderChatList();
+  renderChat();
   toggleSidebar(false);
 }
 
@@ -1306,13 +1330,17 @@ function switchChat(id) {
 }
 
 function deleteChat(id, e) {
-  e.stopPropagation();
-  chats = chats.filter(c => c.id !== id);
+  e?.stopPropagation?.();
+  const nextChats = chats.filter(c => c.id !== id);
+  chats = nextChats;
   if (currentChatId === id) {
-    showWelcome();
+    currentChatId = nextChats[0]?.id || null;
+    friendsInChat = nextChats[0]?.friends || [];
   }
   saveChats();
   renderChatList();
+  if (currentChatId) renderChat();
+  else showWelcome();
 }
 
 function getCurrentChat() { return chats.find(c => c.id === currentChatId); }
@@ -1487,7 +1515,9 @@ function processAssistantContent(content) {
     const toolNames = {
       'create_file': '📄 Создание файла', 'read_file': '📖 Чтение файла',
       'delete_file': '🗑️ Удаление файла', 'rename_file': '✏️ Переименование',
-      'create_folder': '📁 Создание папки',
+      'create_folder': '📁 Создание папки', 'install_package': '📦 Установка пакета',
+      'run_command': '🖥️ Выполнение команды', 'analyze_project': '🧠 Анализ проекта',
+      'write_tests': '🧪 Генерация тестов', 'refactor_code': '♻️ Рефакторинг кода'
     };
     const fileMatch = attrs.match(/file="([^"]*)"/);
     const fileName = fileMatch ? ` — ${fileMatch[1]}` : '';
@@ -1503,16 +1533,33 @@ function processAssistantContent(content) {
     const blockId = 'imgblock-' + Math.random().toString(36).substr(2, 8);
     const noteId = 'imgnote-' + Math.random().toString(36).substr(2, 8);
     mediaGenerationPending++;
-    setTimeout(() => {
-      const imgEl = document.getElementById(imgId);
-      if (!imgEl) return;
-      if (imgEl.complete && imgEl.naturalWidth > 0) {
-        handleGeneratedImageLoad(imgId, blockId, noteId, imageModel, prompt);
-      }
-    }, 80);
     return `<div class="img-gen-block" id="${blockId}"><div class="gen-spinner"></div><div class="gen-text">🎨 Генерация изображения · ${escapeHtml(imageModel)}<span class="gen-dots"></span></div></div>
     <img class="msg-image" id="${imgId}" src="${imgUrl}" alt="${escapeHtml(prompt)}" style="display:none" onclick="viewImage(this.src)" onload="handleGeneratedImageLoad('${imgId}','${blockId}','${noteId}', ${JSON.stringify(imageModel)}, ${JSON.stringify(prompt)})" onerror="handleGeneratedImageError('${imgId}','${blockId}','${noteId}')">
     <div class="media-followup" id="${noteId}"></div>`;
+  });
+
+  // Process image editing
+  html = html.replace(/<EDIT_IMAGE prompt="([^"]*)"\s+image="([^"]*)">/g, (_, prompt, image) => {
+    const imageModel = currentImageModel || 'flux';
+    const imgUrl = `${API_BASE}/image/${encodeURIComponent(prompt)}?model=${encodeURIComponent(imageModel)}&image=${encodeURIComponent(image)}&width=1024&height=1024&seed=-1&key=${API_KEY}`;
+    const imgId = 'img-' + Math.random().toString(36).substr(2, 8);
+    const blockId = 'imgblock-' + Math.random().toString(36).substr(2, 8);
+    const noteId = 'imgnote-' + Math.random().toString(36).substr(2, 8);
+    mediaGenerationPending++;
+    return `<div class="img-gen-block" id="${blockId}"><div class="gen-spinner"></div><div class="gen-text">🖌️ Редактирование фотографии · ${escapeHtml(imageModel)}<span class="gen-dots"></span></div></div>
+    <img class="msg-image" id="${imgId}" src="${imgUrl}" alt="${escapeHtml(prompt)}" style="display:none" onclick="viewImage(this.src)" onload="handleGeneratedImageLoad('${imgId}','${blockId}','${noteId}', ${JSON.stringify(imageModel)}, ${JSON.stringify(prompt)})" onerror="handleGeneratedImageError('${imgId}','${blockId}','${noteId}')">
+    <div class="media-followup" id="${noteId}"></div>`;
+  });
+
+  // Process direct media sending
+  html = html.replace(/<SEND_IMAGE url="([^"]*)"(?:\s+caption="([^"]*)")?>/g, (_, url, caption) => {
+    return `<img class="msg-image" src="${url}" alt="${escapeHtml(caption || 'image')}" onclick="viewImage(this.src)">${caption ? `<div class="media-caption">${escapeHtml(caption)}</div>` : ''}`;
+  });
+  html = html.replace(/<SEND_VIDEO url="([^"]*)"(?:\s+caption="([^"]*)")?>/g, (_, url, caption) => {
+    return `<video class="generated-media video" src="${url}" controls playsinline></video>${caption ? `<div class="media-caption">${escapeHtml(caption)}</div>` : ''}`;
+  });
+  html = html.replace(/<SEND_AUDIO url="([^"]*)"(?:\s+caption="([^"]*)")?>/g, (_, url, caption) => {
+    return `<div class="generated-media audio"><audio src="${url}" controls style="width:100%"></audio></div>${caption ? `<div class="media-caption">${escapeHtml(caption)}</div>` : ''}`;
   });
 
   // Process video generation
@@ -1523,13 +1570,6 @@ function processAssistantContent(content) {
     const blockId = 'videoblock-' + Math.random().toString(36).substr(2, 8);
     const noteId = 'videonote-' + Math.random().toString(36).substr(2, 8);
     mediaGenerationPending++;
-    setTimeout(() => {
-      const videoEl = document.getElementById(videoId);
-      if (!videoEl) return;
-      if (videoEl.readyState >= 2) {
-        handleGeneratedVideoLoad(videoId, blockId, noteId, videoModel, prompt);
-      }
-    }, 120);
     return `<div class="img-gen-block" id="${blockId}"><div class="gen-spinner"></div><div class="gen-text">🎬 Генерация видео · ${escapeHtml(videoModel)}<span class="gen-dots"></span></div></div>
     <video class="generated-media video" id="${videoId}" src="${videoUrl}" controls playsinline style="display:none" onloadeddata="handleGeneratedVideoLoad('${videoId}','${blockId}','${noteId}', ${JSON.stringify(videoModel)}, ${JSON.stringify(prompt)})" onerror="handleGeneratedVideoError('${videoId}','${blockId}','${noteId}')"></video>
     <div class="media-caption">${escapeHtml(prompt)}</div>
@@ -1545,17 +1585,22 @@ function processAssistantContent(content) {
     const blockId = 'audioblock-' + Math.random().toString(36).substr(2, 8);
     const noteId = 'audionote-' + Math.random().toString(36).substr(2, 8);
     mediaGenerationPending++;
-    setTimeout(() => {
-      const audioEl = document.getElementById(audioId);
-      if (!audioEl) return;
-      if (audioEl.readyState >= 2) {
-        handleGeneratedAudioLoad(audioId, blockId, noteId, musicModel, prompt);
-      }
-    }, 120);
     return `<div class="img-gen-block" id="${blockId}"><div class="gen-spinner"></div><div class="gen-text">🎵 Генерация музыки · ${escapeHtml(musicModel)}<span class="gen-dots"></span></div></div>
     <div class="generated-media audio"><audio id="${audioId}" src="${audioUrl}" controls style="display:none;width:100%" onloadeddata="handleGeneratedAudioLoad('${audioId}','${blockId}','${noteId}', ${JSON.stringify(musicModel)}, ${JSON.stringify(prompt)})" onerror="handleGeneratedAudioError('${audioId}','${blockId}','${noteId}')"></audio></div>
     <div class="media-caption">${escapeHtml(prompt)} · ${dur} сек</div>
     <div class="media-followup" id="${noteId}"></div>`;
+  });
+
+  // Process cultural mode
+  html = html.replace(/<POLITE_MODE state="([^"]*)">/g, (_, state) => {
+    const enabled = String(state || '').toLowerCase() === 'on';
+    const chat = getCurrentChat();
+    if (chat) {
+      chat.politeMode = enabled;
+      chat.updatedAt = Date.now();
+      saveChats();
+    }
+    return `<div class="tool-call-block done"><div class="spinner"></div><span>${enabled ? '🎩 Культурный режим включён' : '🙂 Культурный режим выключен'}</span></div>`;
   });
 
   // Process custom keyboard toggle
@@ -1998,7 +2043,8 @@ async function sendMessage(userText, userAttachments = []) {
     .replace('{MEMORY}', memoryStr)
     .replace('{FRIENDS_CONTEXT}', friendsContext);
 
-  const apiMessages = [{ role: 'system', content: systemPrompt }];
+  const politeContext = chat.politeMode ? '\n\nКультурный режим включён: отвечай особенно вежливо, мягко и уважительно, даже если собеседник раздражён 😊' : '';
+  const apiMessages = [{ role: 'system', content: systemPrompt + politeContext }];
   const historyMsgs = chat.messages.slice(-30);
   
   for (const msg of historyMsgs) {
@@ -2010,7 +2056,7 @@ async function sendMessage(userText, userAttachments = []) {
         for (const att of msg.attachments) {
           if (att.type === 'image' && att.dataUrl && !att.stripped) {
             parts.push({ type: 'image_url', image_url: { url: att.dataUrl } });
-            content += `\n\n[🖼️ Пользователь прикрепил изображение: ${att.name}. Воспринимай это как часть его сообщения. Если на картинке есть текст/фраза, это может быть прямое сообщение тебе. Не навязывай анализ без запроса.]`;
+            content += `\n\n[🖼️ Пользователь прикрепил изображение: ${att.name}. Воспринимай это как часть его сообщения. Если на картинке есть текст/фраза, это может быть прямое сообщение тебе. Не навязывай анализ без запроса. Если пользователь просит изменить, дорисовать, перекрасить или отредактировать фото — можешь использовать <EDIT_IMAGE prompt="english edit request" image="${att.dataUrl}">.]`;
           } else if (att.type === 'audio') {
             content += `\n\n[🎵 Пользователь прикрепил аудио/музыку "${att.name}" (${att.fileType || 'audio'}). Воспринимай это как часть сообщения, а не как отдельную просьбу анализировать. Если есть слова — учитывай транскрипцию. Если слов мало или нет, опирайся на настроение, жанровое ощущение, темп, энергию, атмосферу и эмоциональный тон.]`;
             if (att.transcription) content += `\nРечь/вокал/слова: ${att.transcription}`;
@@ -2123,21 +2169,22 @@ async function streamAIResponse(chat, apiMessages, model, friendModel) {
         try {
           const parsed = JSON.parse(data);
           const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) {
+          if (typeof delta === 'string') {
             fullText += delta;
             assistantMsg.content = fullText;
-            bubble.innerHTML = friendLabel + processAssistantContent(fullText) + '<span class="streaming-cursor"></span>';
+            const rendered = processAssistantContent(fullText);
+            bubble.innerHTML = friendLabel + (rendered || '<div class="loading-dots"><span></span><span></span><span></span></div>') + '<span class="streaming-cursor"></span>';
             if (shouldAutoScroll) scrollToBottom();
           }
         } catch {}
       }
     }
 
-    assistantMsg.content = fullText;
-    assistantMsg.streaming = false;
-    bubble.innerHTML = friendLabel + processAssistantContent(fullText || '…');
-    processPostRender(bubble);
     await waitForPendingMedia(30000);
+    assistantMsg.content = fullText && fullText.trim() ? fullText : 'Извини, ответ почему-то не доехал 🙃 Попробуй отправить ещё раз.';
+    assistantMsg.streaming = false;
+    bubble.innerHTML = friendLabel + processAssistantContent(assistantMsg.content);
+    processPostRender(bubble);
     saveChats();
 
   } catch (err) {
@@ -2233,7 +2280,7 @@ function handleGeneratedImageLoad(imgId, blockId, noteId, imageModel, prompt) {
   if (!imgEl) return;
   if (blockEl) blockEl.style.display = 'none';
   imgEl.style.display = 'block';
-  if (noteEl) noteEl.innerHTML = `Вот, получилось ✨ Модель <strong>${escapeHtml(imageModel)}</strong> дорисовала сцену: <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'изображение'))}</strong> 🎨`;
+  if (noteEl) noteEl.innerHTML = `✨ Изображение загрузилось. <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'изображение'))}</strong>`;
   finishMediaPendingOnce(imgEl);
 }
 
@@ -2254,7 +2301,7 @@ function handleGeneratedVideoLoad(videoId, blockId, noteId, videoModel, prompt) 
   if (!videoEl) return;
   if (blockEl) blockEl.style.display = 'none';
   videoEl.style.display = 'block';
-  if (noteEl) noteEl.innerHTML = `Готово 🎬 Видео собрано моделью <strong>${escapeHtml(videoModel)}</strong>. Получилась сцена: <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'видео'))}</strong>`;
+  if (noteEl) noteEl.innerHTML = `✨ Видео загрузилось. <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'видео'))}</strong>`;
   finishMediaPendingOnce(videoEl);
 }
 
@@ -2275,7 +2322,7 @@ function handleGeneratedAudioLoad(audioId, blockId, noteId, musicModel, prompt) 
   if (!audioEl) return;
   if (blockEl) blockEl.style.display = 'none';
   audioEl.style.display = 'block';
-  if (noteEl) noteEl.innerHTML = `Вот 🎵 Трек готов. Его собрала модель <strong>${escapeHtml(musicModel)}</strong>, настроение — <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'музыка'))}</strong>.`;
+  if (noteEl) noteEl.innerHTML = `✨ Трек загрузился. <strong>${escapeHtml((prompt || '').length > 90 ? prompt.slice(0, 87) + '…' : (prompt || 'музыка'))}</strong>`;
   finishMediaPendingOnce(audioEl);
 }
 
@@ -2849,11 +2896,7 @@ function normalizeChatForMerge(chat = {}) {
     created: Number(chat.created || Date.now()),
     updatedAt: Number(chat.updatedAt || chat.created || Date.now()),
     friends: Array.isArray(chat.friends) ? chat.friends : [],
-    prankFlags: chat.prankFlags || {},
-    manualMode: !!chat.manualMode,
-    manualPending: !!chat.manualPending,
-    politeMode: !!chat.politeMode,
-    adminIntervened: !!chat.adminIntervened
+    politeMode: !!chat.politeMode
   };
 }
 
@@ -2874,11 +2917,7 @@ function mergeChatsLists(localChats = [], remoteChats = []) {
       created: Math.min(existing.created || Date.now(), normalized.created || Date.now()),
       updatedAt: Math.max(existing.updatedAt || 0, normalized.updatedAt || 0, ...mergedMessages.map(m => Number(new Date(m.createdAt || 0)) || 0)),
       friends: Array.from(new Set([...(existing.friends || []), ...(normalized.friends || [])])),
-      prankFlags: { ...(existing.prankFlags || {}), ...(normalized.prankFlags || {}) },
-      manualMode: !!(existing.manualMode || normalized.manualMode),
-      manualPending: !!(existing.manualPending || normalized.manualPending),
       politeMode: !!(existing.politeMode || normalized.politeMode),
-      adminIntervened: !!(existing.adminIntervened || normalized.adminIntervened),
       messages: mergedMessages
     };
     map.set(merged.id, merged);
